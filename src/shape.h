@@ -1,5 +1,5 @@
 #pragma once
-
+#if 0
 #include <string>
 #include <vector>
 #include "sceneStructs.h"
@@ -25,7 +25,7 @@ public:
 
 
 
-#if 0
+
 class Mesh;
 class Triangle {
 private:

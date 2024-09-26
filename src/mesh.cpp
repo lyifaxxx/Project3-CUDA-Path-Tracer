@@ -1,3 +1,4 @@
+#if 0
 #include "mesh.h"
 #include "tinyobj/tiny_obj_loader.h"
 #include <iostream>
@@ -90,3 +91,4 @@ void Mesh::LoadOBJ(const std::string& filename, const std::string& local_path)
     }
 }
 
+#endif

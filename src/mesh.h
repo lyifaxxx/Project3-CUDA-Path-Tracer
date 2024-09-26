@@ -1,9 +1,10 @@
 #pragma once
-
+#if 0
 #include "tiny_gltf.h"
 #include <string>
 #include "globals.h"
 #include "shape.h"
+
 
 class Triangle
 {
@@ -36,4 +37,5 @@ public:
 private:
     std::list<Triangle*> faces;
 };
+#endif
 

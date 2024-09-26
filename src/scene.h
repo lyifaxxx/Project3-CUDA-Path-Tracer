@@ -7,7 +7,6 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
-#include "mesh.h"
 
 using namespace std;
 
@@ -22,6 +21,5 @@ public:
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
-	std::vector<Mesh> meshes;
     RenderState state;
 };

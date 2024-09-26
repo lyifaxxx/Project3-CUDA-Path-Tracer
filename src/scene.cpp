@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <cstring>
 #include <glm/gtc/matrix_inverse.hpp>
@@ -5,6 +6,8 @@
 #include <unordered_map>
 #include "json.hpp"
 #include "scene.h"
+#include "TinyObj/tiny_obj_loader.h"
+
 using json = nlohmann::json;
 
 Scene::Scene(string filename)
@@ -23,6 +26,48 @@ Scene::Scene(string filename)
         exit(-1);
     }
 }
+
+// write mesh info to Geom
+void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vector<tinyobj::material_t>& materials) {
+    int nextTriangleIndex = 0;
+    //Read the information from the vector of shape_ts
+    for (unsigned int i = 0; i < shapes.size(); i++)
+    {
+        std::vector<float>& positions = shapes[i].mesh.positions;
+        std::vector<float>& normals = shapes[i].mesh.normals;
+        std::vector<float>& uvs = shapes[i].mesh.texcoords;
+        std::vector<unsigned int>& indices = shapes[i].mesh.indices;
+        for (unsigned int j = 0; j < indices.size(); j += 3)
+        {
+            glm::vec3 p1(positions[indices[j] * 3], positions[indices[j] * 3 + 1], positions[indices[j] * 3 + 2]);
+            glm::vec3 p2(positions[indices[j + 1] * 3], positions[indices[j + 1] * 3 + 1], positions[indices[j + 1] * 3 + 2]);
+            glm::vec3 p3(positions[indices[j + 2] * 3], positions[indices[j + 2] * 3 + 1], positions[indices[j + 2] * 3 + 2]);
+
+            Triangle t = Triangle(p1, p2, p3, nextTriangleIndex++);
+            //                t.mesh_id = triangle_mesh_id;
+            if (normals.size() > 0)
+            {
+                glm::vec3 n1(normals[indices[j] * 3], normals[indices[j] * 3 + 1], normals[indices[j] * 3 + 2]);
+                glm::vec3 n2(normals[indices[j + 1] * 3], normals[indices[j + 1] * 3 + 1], normals[indices[j + 1] * 3 + 2]);
+                glm::vec3 n3(normals[indices[j + 2] * 3], normals[indices[j + 2] * 3 + 1], normals[indices[j + 2] * 3 + 2]);
+                t.normals[0] = n1;
+                t.normals[1] = n2;
+                t.normals[2] = n3;
+            }
+            if (uvs.size() > 0)
+            {
+                glm::vec3 t1(uvs[indices[j] * 2], uvs[indices[j] * 2 + 1], 0);
+                glm::vec3 t2(uvs[indices[j + 1] * 2], uvs[indices[j + 1] * 2 + 1], 0);
+                glm::vec3 t3(uvs[indices[j + 2] * 2], uvs[indices[j + 2] * 2 + 1], 0);
+                t.uvs[0] = t1;
+                t.uvs[1] = t2;
+                t.uvs[2] = t3;
+            }
+            geom->mesh->triangles.push_back(t);
+        }
+    }
+}
+
 
 void Scene::loadFromJSON(const std::string& jsonName)
 {
@@ -82,10 +127,29 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             newGeom.type = CUBE;
         }
-        else
+		else if (type == "sphere")
         {
             newGeom.type = SPHERE;
         }
+		else if (type == "mesh")
+		{
+			newGeom.type = MESH;
+			std::string meshFilePath = p["FILE"];
+            //test mesh file path
+			std::cout << meshFilePath << std::endl;
+            // load obj file
+			newGeom.mesh = new Mesh();
+            std::vector<tinyobj::shape_t> shapes; std::vector<tinyobj::material_t> materials;
+            std::string errors = tinyobj::LoadObj(shapes, materials, meshFilePath.c_str());
+            std::cout << errors << std::endl;
+            if (errors.size() == 0) {
+				writeMeshInfo(&newGeom, shapes, materials);
+			}
+            else {
+                std::cout << "Error loading mesh: " << errors << std::endl;
+            }
+
+		}
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];

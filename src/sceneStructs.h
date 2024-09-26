@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
 
@@ -10,13 +11,40 @@
 enum GeomType
 {
     SPHERE,
-    CUBE
+    CUBE,
+    MESH
 };
 
 struct Ray
 {
     glm::vec3 origin;
     glm::vec3 direction;
+};
+
+struct Triangle
+{
+    std::array<glm::vec3, 3> points;
+    std::array<glm::vec3, 3> normals;
+    std::array<glm::vec3, 3> uvs;
+	glm::vec3 planeNormal;
+    int index_in_mesh;
+
+	Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, int idx)
+	{
+        points = {p1, p2, p3};
+        index_in_mesh = idx;
+
+	}
+};
+
+struct Mesh
+{
+	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> normals;
+	std::vector<glm::vec2> uvs;
+	std::vector<int> indices;
+	int num_triangles;
+	std::vector<Triangle> triangles;
 };
 
 struct Geom
@@ -29,6 +57,7 @@ struct Geom
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+	Mesh* mesh;
 };
 
 struct Material

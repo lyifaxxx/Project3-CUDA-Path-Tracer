@@ -112,18 +112,13 @@ __host__ __device__ float sphereIntersectionTest(
     return glm::length(r.origin - intersectionPoint);
 }
 
-#if 0
 __host__ __device__ float triangleIntersectionTest(
-	Geom triangle,
+	glm::vec3 v0, glm::vec3 v1, glm::vec3 v2,
 	Ray r,
 	glm::vec3& intersectionPoint,
 	glm::vec3& normal,
 	bool& outside)
 {
-	glm::vec3 v0 = glm::vec3(triangle.points[0]);
-	glm::vec3 v1 = glm::vec3(triangle.points[1]);
-	glm::vec3 v2 = glm::vec3(triangle.points[2]);
-
 	glm::vec3 e1 = v1 - v0;
 	glm::vec3 e2 = v2 - v0;
 	glm::vec3 b = r.origin - v0;
@@ -131,30 +126,32 @@ __host__ __device__ float triangleIntersectionTest(
 
 	glm::vec3 s1 = glm::cross(d, e2);
 	glm::vec3 s2 = glm::cross(b, e1);
-	float invDivisor = 1.0f / glm::dot(s1, e1);
+	float invDenom = 1.0f / glm::dot(s1, e1);
 
-	float t = glm::dot(s2, e2) * invDivisor;
-	if (t < 0)
+	float t = glm::dot(s2, e2) * invDenom;
+	float b1 = glm::dot(s1, b) * invDenom;
+	float b2 = glm::dot(s2, d) * invDenom;
+
+	if (t < 0 || b1 < 0 || b2 < 0 || b1 + b2 > 1)
 	{
 		return -1;
 	}
 
-	float b1 = glm::dot(s1, b) * invDivisor;
-	if (b1 < 0 || b1 > 1)
-	{
-		return -1;
-	}
-
-	float b2 = glm::dot(s2, d) * invDivisor;
-	if (b2 < 0 || b1 + b2 > 1)
-	{
-		return -1;
-	}
-
-	intersectionPoint = r.origin + t * d;
+	intersectionPoint = r.origin + t * r.direction;
 	normal = glm::normalize(glm::cross(e1, e2));
-	outside = glm::dot(normal, d) < 0;
+	outside = true;
 
-	return t;
+	return glm::length(r.origin - intersectionPoint);
+}
+
+#if 1
+__host__ __device__ float meshIntersectionTest(
+    Geom geom,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    bool& outside
+) {
+    return 0.0;
 }
 #endif

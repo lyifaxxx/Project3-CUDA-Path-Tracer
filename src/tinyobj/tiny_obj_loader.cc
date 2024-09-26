@@ -778,7 +778,7 @@ std::string LoadObj(std::vector<shape_t> &shapes,
       char namebuf[4096];
       token += 7;
 #ifdef _MSC_VER
-      sscanf_s(token, "%s", namebuf);
+      sscanf_s(token, "%s", namebuf, (unsigned)_countof(namebuf));
 #else
       sscanf(token, "%s", namebuf);
 #endif

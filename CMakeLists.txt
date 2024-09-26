@@ -61,10 +61,10 @@ set(headers
     src/sceneStructs.h
     src/preview.h
     src/utilities.h
-    src/shape.h
-    src/mesh.h
-    src/transform.h
-    src/globals.h
+    #src/shape.h
+    #src/mesh.h
+    #src/transform.h
+    #src/globals.h
 )
 
 set(sources
@@ -78,9 +78,9 @@ set(sources
     src/scene.cpp
     src/preview.cpp
     src/utilities.cpp
-    src/shape.cpp
-    src/mesh.cpp
-    src/transform.cpp
+    #src/shape.cpp
+    #src/mesh.cpp
+    #src/transform.cpp
 )
 
 set(imgui_headers
