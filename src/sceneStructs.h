@@ -23,28 +23,56 @@ struct Ray
 
 struct Triangle
 {
-    std::array<glm::vec3, 3> points;
-    std::array<glm::vec3, 3> normals;
-    std::array<glm::vec3, 3> uvs;
+    glm::vec3 points[3];
+    glm::vec3 normals[3];
+    glm::vec3 uvs[3]; 
 	glm::vec3 planeNormal;
     int index_in_mesh;
 
 	Triangle(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, int idx)
 	{
-        points = {p1, p2, p3};
+		points[0] = p1;
+		points[1] = p2;
+		points[2] = p3;
         index_in_mesh = idx;
 
+	}
+	Triangle()
+	{
+		points[0] = glm::vec3(0.0f);
+		points[1] = glm::vec3(0.0f);
+		points[2] = glm::vec3(0.0f);
+		index_in_mesh = -1;
 	}
 };
 
 struct Mesh
 {
-	std::vector<glm::vec3> vertices;
-	std::vector<glm::vec3> normals;
-	std::vector<glm::vec2> uvs;
-	std::vector<int> indices;
+	glm::vec3* vertices;
+    glm::vec3* normals;
+    glm::vec3* uvs;
+	int* indices;
+	int num_vertices;
+	int num_normals;
+	int num_uvs;
+	int num_indices;
 	int num_triangles;
-	std::vector<Triangle> triangles;
+	Triangle* triangles;
+
+	Mesh()
+	{
+		vertices = nullptr;
+		normals = nullptr;
+		uvs = nullptr;
+		indices = nullptr;
+		triangles = nullptr;
+		num_vertices = 0;
+		num_normals = 0;
+		num_uvs = 0;
+		num_indices = 0;
+        num_triangles = 0;
+
+	}
 };
 
 struct Geom

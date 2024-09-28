@@ -114,37 +114,64 @@ __host__ __device__ float sphereIntersectionTest(
 
 __host__ __device__ float triangleIntersectionTest(
 	glm::vec3 v0, glm::vec3 v1, glm::vec3 v2,
+    Geom geom,
 	Ray r,
 	glm::vec3& intersectionPoint,
 	glm::vec3& normal,
 	bool& outside)
 {
-	glm::vec3 e1 = v1 - v0;
-	glm::vec3 e2 = v2 - v0;
-	glm::vec3 b = r.origin - v0;
-	glm::vec3 d = r.direction;
+    glm::vec3 ro = multiplyMV(geom.inverseTransform, glm::vec4(r.origin, 1.0f));
+    glm::vec3 rd = glm::normalize(multiplyMV(geom.inverseTransform, glm::vec4(r.direction, 0.0f)));
 
-	glm::vec3 s1 = glm::cross(d, e2);
-	glm::vec3 s2 = glm::cross(b, e1);
-	float invDenom = 1.0f / glm::dot(s1, e1);
+    Ray rt;
+    rt.origin = ro;
+    rt.direction = rd;
 
-	float t = glm::dot(s2, e2) * invDenom;
-	float b1 = glm::dot(s1, b) * invDenom;
-	float b2 = glm::dot(s2, d) * invDenom;
+    glm::vec3 e1 = v1 - v0;
+    glm::vec3 e2 = v2 - v0;
+    glm::vec3 p = glm::cross(rt.direction, e2);
+    float det = glm::dot(e1, p);
 
-	if (t < 0 || b1 < 0 || b2 < 0 || b1 + b2 > 1)
-	{
-		return -1;
-	}
+    if (fabs(det) < 1e-8) return -1.0f; // Parallel ray
 
-	intersectionPoint = r.origin + t * r.direction;
-	normal = glm::normalize(glm::cross(e1, e2));
-	outside = true;
+    float invDet = 1.0f / det;
+    glm::vec3 tVec = rt.origin - v0;
+    float u = glm::dot(tVec, p) * invDet;
+    if (u < 0 || u > 1) return -1.0f;
 
-	return glm::length(r.origin - intersectionPoint);
+    glm::vec3 qVec = glm::cross(tVec, e1);
+    float v = glm::dot(rt.direction, qVec) * invDet;
+    if (v < 0 || u + v > 1) return -1.0f;
+
+    float t = glm::dot(e2, qVec) * invDet;
+    intersectionPoint = multiplyMV(geom.transform, glm::vec4(rt.origin + t * rt.direction, 0.0f));
+    normal = glm::normalize(multiplyMV(geom.invTranspose, glm::vec4(glm::cross(e1, e2), 0.0f)));
+    outside = true;
+
+    return t;
 }
 
-#if 1
+glm::vec3 barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3) {
+    glm::vec3 edge1 = t2 - t1;
+    glm::vec3 edge2 = t3 - t2;
+    float S = length(cross(edge1, edge2));
+
+    edge1 = p - t2;
+    edge2 = p - t3;
+    float S1 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t3;
+    float S2 = length(cross(edge1, edge2));
+
+    edge1 = p - t1;
+    edge2 = p - t2;
+    float S3 = length(cross(edge1, edge2));
+
+    return glm::vec3(S1 / S, S2 / S, S3 / S);
+}
+
+
 __host__ __device__ float meshIntersectionTest(
     Geom geom,
     Ray r,
@@ -152,6 +179,44 @@ __host__ __device__ float meshIntersectionTest(
     glm::vec3& normal,
     bool& outside
 ) {
-    return 0.0;
+    float closestT = FLT_MAX;
+    int hitTriangle = -1;
+    int num_triangles = geom.mesh->num_triangles;
+	Mesh* mesh = geom.mesh;
+
+    for (int i = 0; i < num_triangles; ++i) {
+        const Triangle& tri = geom.mesh->triangles[i];
+        glm::vec3 tempIntersectionPoint, tempNormal;
+        bool tempOutside;
+
+        glm::vec3 p0 = tri.points[0];
+		float p0x = p0.x;
+		float p0y = p0.y;
+		float p0z = p0.z;
+
+		glm::vec3 p1 = tri.points[1];
+		glm::vec3 p2 = tri.points[2];
+
+        float t = 0.0;
+        
+        t = triangleIntersectionTest(
+            tri.points[0], tri.points[1], tri.points[2],
+            geom,
+            r,
+            tempIntersectionPoint,
+            tempNormal,
+            tempOutside
+        );
+        
+
+        if (t > 0 && t < closestT) {
+            closestT = t;
+            intersectionPoint = tempIntersectionPoint;
+            normal = tempNormal;
+            outside = tempOutside;
+            hitTriangle = i;
+        }
+    }
+
+    return (hitTriangle != -1) ? closestT : -1.0f;
 }
-#endif

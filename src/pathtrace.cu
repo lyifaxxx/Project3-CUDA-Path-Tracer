@@ -116,10 +116,105 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
+//static Mesh* dev_meshes = NULL;
+//static Triangle* dev_triangles = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
     guiData = imGuiData;
+}
+
+#if 1
+size_t calculateMeshSize(const Mesh& mesh) {
+    size_t size = sizeof(Mesh);
+    /*size += mesh.vertices.size() * sizeof(glm::vec3);
+    size += mesh.normals.size() * sizeof(glm::vec3); 
+    size += mesh.uvs.size() * sizeof(glm::vec2);   
+	size += mesh.indices.size() * sizeof(int);*/
+
+
+    return size;
+}
+#endif
+
+size_t calculateGeomSize(const Geom& geom) {
+    size_t size = sizeof(Geom);
+
+    // If the geom has a mesh, add the size of the mesh data
+    if (geom.type == MESH && geom.mesh) {
+        size += calculateMeshSize(*geom.mesh);
+    }
+
+    return size;
+}
+
+size_t calculateSceneSize(const std::vector<Geom>& geoms) {
+    size_t totalSize = 0;
+
+    // Add size of all Geom structures
+    totalSize += geoms.size() * sizeof(Geom);
+
+    // Add sizes for Mesh data where applicable
+    for (const auto& geom : geoms) {
+        if (geom.type == MESH && geom.mesh) {
+            totalSize += calculateMeshSize(*geom.mesh);
+        }
+    }
+
+    return totalSize;
+}
+
+void allocateMemForMesh(const Mesh& mesh, Mesh* dev_meshes) {
+	// Allocate memory for vertices, normals, uvs, and triangles
+    glm::vec3* dev_vertices = nullptr;
+    glm::vec3* dev_normals = nullptr;
+    glm::vec3* dev_uvs = nullptr;
+    int* dev_indices = nullptr;
+    Triangle* dev_triangles = nullptr;
+
+    cudaMalloc(&dev_vertices, mesh.num_vertices * sizeof(glm::vec3));
+    cudaMemcpy(dev_vertices, mesh.vertices, mesh.num_vertices * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_normals, mesh.num_normals * sizeof(glm::vec3));
+	cudaMemcpy(dev_normals, mesh.normals, mesh.num_normals * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_uvs, mesh.num_uvs * sizeof(glm::vec3));
+	cudaMemcpy(dev_uvs, mesh.uvs, mesh.num_uvs * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+
+	cudaMalloc(&dev_indices, mesh.num_indices * sizeof(int));
+	cudaMemcpy(dev_indices, mesh.indices, mesh.num_indices * sizeof(int), cudaMemcpyHostToDevice);
+
+    if (mesh.num_triangles > 0) {
+        // test mesh triangle data
+
+
+        cudaMalloc(&dev_triangles, mesh.num_triangles * sizeof(Triangle));
+        cudaMemcpy(dev_triangles, mesh.triangles, mesh.num_triangles * sizeof(Triangle), cudaMemcpyHostToDevice);
+
+    }
+
+	// Copy pointers to device memory
+	cudaMemcpy(&(dev_meshes->vertices), &dev_vertices, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->normals), &dev_normals, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->uvs), &dev_uvs, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->indices), &dev_indices, sizeof(int*), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->triangles), &dev_triangles, sizeof(Triangle*), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->num_vertices), &mesh.num_vertices, sizeof(int), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->num_normals), &mesh.num_normals, sizeof(int), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->num_uvs), &mesh.num_uvs, sizeof(int), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->num_indices), &mesh.num_indices, sizeof(int), cudaMemcpyHostToDevice);
+
+	cudaMemcpy(&(dev_meshes->num_triangles), &mesh.num_triangles, sizeof(int), cudaMemcpyHostToDevice);
+	checkCUDAError("allocateMemForMesh: copy num_triangles to mesh device");
+	
 }
 
 void pathtraceInit(Scene* scene)
@@ -128,6 +223,7 @@ void pathtraceInit(Scene* scene)
 
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+    cudaDeviceSynchronize();
 
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
@@ -136,6 +232,23 @@ void pathtraceInit(Scene* scene)
 
     cudaMalloc(&dev_geoms, scene->geoms.size() * sizeof(Geom));
     cudaMemcpy(dev_geoms, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+
+#if 1
+    Mesh* dev_meshes = nullptr;
+    cudaMalloc(&dev_meshes, sizeof(Mesh));
+	for (int i = 0; i < scene->geoms.size(); i++)
+	{
+		if (scene->geoms[i].type == MESH)
+		{
+			Mesh mesh = *scene->geoms[i].mesh;
+           
+			allocateMemForMesh(mesh, dev_meshes);
+			cudaMemcpy(&(dev_geoms[i].mesh), &dev_meshes, sizeof(Mesh*), cudaMemcpyHostToDevice);
+			checkCUDAError("pathtraceInit: copy mesh");
+		
+		}
+	}
+#endif
 
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
@@ -152,10 +265,47 @@ void pathtraceFree()
 {
     cudaFree(dev_image);  // no-op if dev_image is null
     cudaFree(dev_paths);
+    //cudaFree(dev_geoms);
+    
+    // TODO: clean up any extra device memory you created
+#if 1
+    // free mesh and triangle data
+	if (hst_scene != NULL)
+	{
+		for (int i = 0; i < hst_scene->geoms.size(); i++)
+		{
+			if (hst_scene->geoms[i].type == MESH)
+			{
+                Mesh* dev_meshes = nullptr;
+                cudaDeviceSynchronize();
+				cudaMemcpy(&dev_meshes, &(dev_geoms[i].mesh), sizeof(Mesh*), cudaMemcpyDeviceToHost);
+                cudaDeviceSynchronize();
+				glm::vec3* dev_vertices = nullptr;
+				glm::vec3* dev_normals = nullptr;
+				glm::vec3* dev_uvs = nullptr;
+				int* dev_indices = nullptr;
+				Triangle* dev_triangles = nullptr;
+				cudaMemcpy(&dev_vertices, &(dev_meshes->vertices), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_vertices);
+				cudaMemcpy(&dev_normals, &(dev_meshes->normals), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_normals);
+				cudaMemcpy(&dev_uvs, &(dev_meshes->uvs), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_uvs);
+				cudaMemcpy(&dev_indices, &(dev_meshes->indices), sizeof(int*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_indices);
+				cudaMemcpy(&dev_triangles, &(dev_meshes->triangles), sizeof(Triangle*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_triangles);
+				cudaFree(dev_meshes);
+
+			}
+		}
+	}
+#endif
+    cudaDeviceSynchronize();
     cudaFree(dev_geoms);
+	checkCUDAError("pathtraceFree: free geoms");
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
-    // TODO: clean up any extra device memory you created
 
     checkCUDAError("pathtraceFree");
 }
@@ -243,7 +393,13 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
 			else if (geom.type == MESH)
 			{
-				//t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+				Mesh* mesh = geom.mesh;
+				Triangle* triangles = mesh->triangles;
+				Triangle tri = triangles[1];
+				glm::vec3 p0 = tri.points[0];
+				float p0x = p0.x;
+                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+				//checkCUDAError("computeIntersections: meshIntersectionTest");
 			}
 
             // Compute the minimum t from the intersection tests to determine what

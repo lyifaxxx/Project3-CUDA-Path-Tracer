@@ -29,43 +29,93 @@ Scene::Scene(string filename)
 
 // write mesh info to Geom
 void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vector<tinyobj::material_t>& materials) {
-    int nextTriangleIndex = 0;
-    //Read the information from the vector of shape_ts
+    std::vector<glm::vec3> temp_vertices;
+    std::vector<glm::vec3> temp_normals;
+    std::vector<glm::vec3> temp_uvs;
+    std::vector<int> temp_indices;
+	std::vector<Triangle> temp_triangles;
+
+	unsigned int nextTriangleIndex = 0;
+
     for (unsigned int i = 0; i < shapes.size(); i++)
     {
         std::vector<float>& positions = shapes[i].mesh.positions;
         std::vector<float>& normals = shapes[i].mesh.normals;
         std::vector<float>& uvs = shapes[i].mesh.texcoords;
         std::vector<unsigned int>& indices = shapes[i].mesh.indices;
-        for (unsigned int j = 0; j < indices.size(); j += 3)
-        {
+        for (unsigned int j = 0; j < indices.size(); j += 3) {
+			// triangulate
             glm::vec3 p1(positions[indices[j] * 3], positions[indices[j] * 3 + 1], positions[indices[j] * 3 + 2]);
             glm::vec3 p2(positions[indices[j + 1] * 3], positions[indices[j + 1] * 3 + 1], positions[indices[j + 1] * 3 + 2]);
             glm::vec3 p3(positions[indices[j + 2] * 3], positions[indices[j + 2] * 3 + 1], positions[indices[j + 2] * 3 + 2]);
 
             Triangle t = Triangle(p1, p2, p3, nextTriangleIndex++);
-            //                t.mesh_id = triangle_mesh_id;
-            if (normals.size() > 0)
-            {
-                glm::vec3 n1(normals[indices[j] * 3], normals[indices[j] * 3 + 1], normals[indices[j] * 3 + 2]);
-                glm::vec3 n2(normals[indices[j + 1] * 3], normals[indices[j + 1] * 3 + 1], normals[indices[j + 1] * 3 + 2]);
-                glm::vec3 n3(normals[indices[j + 2] * 3], normals[indices[j + 2] * 3 + 1], normals[indices[j + 2] * 3 + 2]);
-                t.normals[0] = n1;
-                t.normals[1] = n2;
-                t.normals[2] = n3;
-            }
-            if (uvs.size() > 0)
-            {
-                glm::vec3 t1(uvs[indices[j] * 2], uvs[indices[j] * 2 + 1], 0);
-                glm::vec3 t2(uvs[indices[j + 1] * 2], uvs[indices[j + 1] * 2 + 1], 0);
-                glm::vec3 t3(uvs[indices[j + 2] * 2], uvs[indices[j + 2] * 2 + 1], 0);
-                t.uvs[0] = t1;
-                t.uvs[1] = t2;
-                t.uvs[2] = t3;
-            }
-            geom->mesh->triangles.push_back(t);
+
+			if (normals.size() > 0)
+			{
+				glm::vec3 n1(normals[indices[j] * 3], normals[indices[j] * 3 + 1], normals[indices[j] * 3 + 2]);
+				glm::vec3 n2(normals[indices[j + 1] * 3], normals[indices[j + 1] * 3 + 1], normals[indices[j + 1] * 3 + 2]);
+				glm::vec3 n3(normals[indices[j + 2] * 3], normals[indices[j + 2] * 3 + 1], normals[indices[j + 2] * 3 + 2]);
+				t.normals[0] = n1;
+				t.normals[1] = n2;
+				t.normals[2] = n3;
+			}
+
+			if (uvs.size() > 0)
+			{
+				glm::vec3 uv1(uvs[indices[j] * 2], uvs[indices[j] * 2 + 1], 0);
+				glm::vec3 uv2(uvs[indices[j + 1] * 2], uvs[indices[j + 1] * 2 + 1], 0);
+				glm::vec3 uv3(uvs[indices[j + 2] * 2], uvs[indices[j + 2] * 2 + 1], 0);
+				t.uvs[0] = uv1;
+				t.uvs[1] = uv2;
+				t.uvs[2] = uv3;
+			}
+
+            temp_triangles.push_back(t);
+			temp_vertices.push_back(p1);
+			temp_vertices.push_back(p2);
+			temp_vertices.push_back(p3);
+			if (normals.size() > 0)
+			{
+				temp_normals.push_back(t.normals[0]);
+				temp_normals.push_back(t.normals[1]);
+				temp_normals.push_back(t.normals[2]);
+			}
+			if (uvs.size() > 0)
+			{
+				temp_uvs.push_back(t.uvs[0]);
+				temp_uvs.push_back(t.uvs[1]);
+				temp_uvs.push_back(t.uvs[2]);
+			}
+			temp_indices.push_back(temp_indices.size());
+			temp_indices.push_back(temp_indices.size());
+			temp_indices.push_back(temp_indices.size());
+
         }
     }
+
+    geom->mesh->vertices = new glm::vec3[temp_vertices.size()];
+    std::copy(temp_vertices.begin(), temp_vertices.end(), geom->mesh->vertices);
+
+    geom->mesh->normals = new glm::vec3[temp_normals.size()];
+    std::copy(temp_normals.begin(), temp_normals.end(), geom->mesh->normals);
+
+    geom->mesh->uvs = new glm::vec3[temp_uvs.size()]; 
+    std::copy(temp_uvs.begin(), temp_uvs.end(), geom->mesh->uvs);
+
+    geom->mesh->indices = new int[temp_indices.size()];
+    std::copy(temp_indices.begin(), temp_indices.end(), geom->mesh->indices);
+
+    geom->mesh->triangles = new Triangle[temp_triangles.size()];
+    std::copy(temp_triangles.begin(), temp_triangles.end(), geom->mesh->triangles);
+
+
+    // Update sizes in the structure
+    geom->mesh->num_vertices = temp_vertices.size();
+    geom->mesh->num_normals = temp_normals.size();
+    geom->mesh->num_uvs = temp_uvs.size();
+    geom->mesh->num_indices = temp_indices.size();
+	geom->mesh->num_triangles = temp_triangles.size();
 }
 
 
@@ -148,6 +198,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
             else {
                 std::cout << "Error loading mesh: " << errors << std::endl;
             }
+			this->num_meshes++;
 
 		}
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
