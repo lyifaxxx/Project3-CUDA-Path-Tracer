@@ -127,28 +127,44 @@ __host__ __device__ float triangleIntersectionTest(
     rt.origin = ro;
     rt.direction = rd;
 
-    glm::vec3 e1 = v1 - v0;
-    glm::vec3 e2 = v2 - v0;
-    glm::vec3 p = glm::cross(rt.direction, e2);
-    float det = glm::dot(e1, p);
+	glm::vec3 e1 = v1 - v0;
+	glm::vec3 e2 = v2 - v0;
+	glm::vec3 h = cross(rt.direction, e2);
+    float a = glm::dot(e1, h);
 
-    if (fabs(det) < 1e-8) return -1.0f; // Parallel ray
+	if (a > -0.00001f && a < 0.00001f) // parallel
+	{
+		return -1;
+	}
 
-    float invDet = 1.0f / det;
-    glm::vec3 tVec = rt.origin - v0;
-    float u = glm::dot(tVec, p) * invDet;
-    if (u < 0 || u > 1) return -1.0f;
+	float f = 1.0f / a;
+	glm::vec3 s = rt.origin - v0;
+	float u = f * glm::dot(s, h);
+	if (u < 0.0f || u > 1.0f)
+	{
+		return -1;
+	}
+	glm::vec3 q = cross(s, e1);
+	float v = f * glm::dot(rt.direction, q);
+	if (v < 0.0f || u + v > 1.0f)
+	{
+		return -1;
+	}
 
-    glm::vec3 qVec = glm::cross(tVec, e1);
-    float v = glm::dot(rt.direction, qVec) * invDet;
-    if (v < 0 || u + v > 1) return -1.0f;
+	float t = f * glm::dot(e2, q);
+	if (t > 0.00001f)
+	{
+		glm::vec3 objspaceIntersection = getPointOnRay(rt, t);
+		intersectionPoint = multiplyMV(geom.transform, glm::vec4(objspaceIntersection, 1.f));
+		normal = glm::normalize(multiplyMV(geom.invTranspose, glm::vec4(objspaceIntersection, 0.f)));
+		outside = true;
+		return glm::length(r.origin - intersectionPoint);
+	}
+    else
+	{
+		return -1;
+	}
 
-    float t = glm::dot(e2, qVec) * invDet;
-    intersectionPoint = multiplyMV(geom.transform, glm::vec4(rt.origin + t * rt.direction, 0.0f));
-    normal = glm::normalize(multiplyMV(geom.invTranspose, glm::vec4(glm::cross(e1, e2), 0.0f)));
-    outside = true;
-
-    return t;
 }
 
 glm::vec3 barycentric(glm::vec3 p, glm::vec3 t1, glm::vec3 t2, glm::vec3 t3) {

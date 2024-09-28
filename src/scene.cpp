@@ -4,9 +4,12 @@
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <unordered_map>
+#include <windows.h>
 #include "json.hpp"
 #include "scene.h"
 #include "TinyObj/tiny_obj_loader.h"
+#include <cstdlib> 
+#include <cstring>
 
 using json = nlohmann::json;
 
@@ -185,6 +188,21 @@ void Scene::loadFromJSON(const std::string& jsonName)
 		{
 			newGeom.type = MESH;
 			std::string meshFilePath = p["FILE"];
+            char buffer[MAX_PATH];
+            DWORD dwRet = GetCurrentDirectory(MAX_PATH, buffer);
+
+            if (dwRet == 0) {
+                std::cerr << "Error getting current directory." << std::endl;
+            }
+
+            std::cout << "Current directory: " << buffer << std::endl;
+            std::string currentPath(buffer);
+            size_t pos = currentPath.find_last_of("\\");
+            if (pos != std::string::npos) {
+                currentPath = currentPath.substr(0, pos); // Remove the last directory part ('build')
+            }
+            currentPath += "\\scenes";
+            meshFilePath = currentPath + "\\" + meshFilePath;
             //test mesh file path
 			std::cout << meshFilePath << std::endl;
             // load obj file
