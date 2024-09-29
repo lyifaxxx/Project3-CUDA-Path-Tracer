@@ -77,4 +77,6 @@ __host__ __device__ float meshIntersectionTest(
 	Ray r,
 	glm::vec3& intersectionPoint,
 	glm::vec3& normal,
+    glm::vec3& uv,
+    glm::mat3& TBN,
 	bool& outside);

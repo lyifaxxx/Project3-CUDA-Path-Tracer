@@ -124,45 +124,7 @@ void InitDataContainer(GuiDataContainer* imGuiData)
     guiData = imGuiData;
 }
 
-#if 1
-size_t calculateMeshSize(const Mesh& mesh) {
-    size_t size = sizeof(Mesh);
-    /*size += mesh.vertices.size() * sizeof(glm::vec3);
-    size += mesh.normals.size() * sizeof(glm::vec3); 
-    size += mesh.uvs.size() * sizeof(glm::vec2);   
-	size += mesh.indices.size() * sizeof(int);*/
 
-
-    return size;
-}
-#endif
-
-size_t calculateGeomSize(const Geom& geom) {
-    size_t size = sizeof(Geom);
-
-    // If the geom has a mesh, add the size of the mesh data
-    if (geom.type == MESH && geom.mesh) {
-        size += calculateMeshSize(*geom.mesh);
-    }
-
-    return size;
-}
-
-size_t calculateSceneSize(const std::vector<Geom>& geoms) {
-    size_t totalSize = 0;
-
-    // Add size of all Geom structures
-    totalSize += geoms.size() * sizeof(Geom);
-
-    // Add sizes for Mesh data where applicable
-    for (const auto& geom : geoms) {
-        if (geom.type == MESH && geom.mesh) {
-            totalSize += calculateMeshSize(*geom.mesh);
-        }
-    }
-
-    return totalSize;
-}
 
 void allocateMemForMesh(const Mesh& mesh, Mesh* dev_meshes) {
 	// Allocate memory for vertices, normals, uvs, and triangles
@@ -217,6 +179,42 @@ void allocateMemForMesh(const Mesh& mesh, Mesh* dev_meshes) {
 	
 }
 
+void allocateMemForTexture(const Texture& texture, Texture* dev_textures) {
+	// Allocate memory for texture data
+	glm::vec3* dev_data = nullptr;
+
+	cudaMalloc(&dev_data, texture.width * texture.height * sizeof(glm::vec3));
+	cudaMemcpy(dev_data, texture.data, texture.width * texture.height * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+
+	// Copy pointers to device memory
+	cudaMemcpy(&(dev_textures->data), &dev_data, sizeof(glm::vec3*), cudaMemcpyHostToDevice);
+	cudaMemcpy(&(dev_textures->width), &texture.width, sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(&(dev_textures->height), &texture.height, sizeof(int), cudaMemcpyHostToDevice);
+    
+	checkCUDAError("allocateMemForTexture: copy texture data to device");
+}
+
+void allocateMemForMaterial(const Material& material, Material* dev_materials) {
+	
+    if (material.diffuseTexture != nullptr) {
+        Texture* dev_diffuseTextures = nullptr;
+        cudaMalloc(&dev_diffuseTextures, sizeof(Texture));
+        allocateMemForTexture(*(material.diffuseTexture), dev_diffuseTextures);
+		cudaMemcpy(&(dev_materials->diffuseTexture), &dev_diffuseTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
+        
+		checkCUDAError("allocateMemForMaterial: copy diffuse texture");
+    }
+	if (material.normalTexture != nullptr) {
+		Texture* dev_normalTextures = nullptr;
+		cudaMalloc(&dev_normalTextures, sizeof(Texture));
+		allocateMemForTexture(*(material.normalTexture), dev_normalTextures);
+		cudaMemcpy(&(dev_materials->normalTexture), &dev_normalTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
+		checkCUDAError("allocateMemForMaterial: copy normal texture");
+	}
+
+
+}
+
 void pathtraceInit(Scene* scene)
 {
     hst_scene = scene;
@@ -244,14 +242,34 @@ void pathtraceInit(Scene* scene)
            
 			allocateMemForMesh(mesh, dev_meshes);
 			cudaMemcpy(&(dev_geoms[i].mesh), &dev_meshes, sizeof(Mesh*), cudaMemcpyHostToDevice);
-			checkCUDAError("pathtraceInit: copy mesh");
-		
+			checkCUDAError("pathtraceInit: copy mesh");		
 		}
 	}
 #endif
 
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
+	Texture* dev_diffuseTextures = nullptr;
+	cudaMalloc(&dev_diffuseTextures, sizeof(Texture));
+	Texture* dev_normalTextures = nullptr;
+	cudaMalloc(&dev_normalTextures, sizeof(Texture));
+	for (int i = 0; i < scene->materials.size(); i++)
+	{	
+        Material material = scene->materials[i];
+        if (scene->materials[i].diffuseTexture != nullptr) {
+            Texture diffuseTexture = *material.diffuseTexture;
+            allocateMemForTexture(diffuseTexture, dev_diffuseTextures);
+            cudaMemcpy(&(dev_materials[i].diffuseTexture), &dev_diffuseTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
+            checkCUDAError("pathtraceInit: copy diffuse texture");
+        }
+		if (scene->materials[i].normalTexture != nullptr) {
+			Texture normalTexture = *material.normalTexture;
+			allocateMemForTexture(normalTexture, dev_normalTextures);
+			cudaMemcpy(&(dev_materials[i].normalTexture), &dev_normalTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
+            checkCUDAError("pathtraceInit: copy normal texture");
+		}
+	}
+    //cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -269,9 +287,10 @@ void pathtraceFree()
     
     // TODO: clean up any extra device memory you created
 #if 1
-    // free mesh and triangle data
+    
 	if (hst_scene != NULL)
 	{
+        // free mesh and triangle data
 		for (int i = 0; i < hst_scene->geoms.size(); i++)
 		{
 			if (hst_scene->geoms[i].type == MESH)
@@ -299,12 +318,36 @@ void pathtraceFree()
 
 			}
 		}
+
+		// free texture data
+		for (int i = 0; i < hst_scene->materials.size(); i++)
+		{
+			if (hst_scene->materials[i].diffuseTexture != nullptr)
+			{
+				Texture* dev_diffuseTextures = nullptr;
+				cudaMemcpy(&dev_diffuseTextures, &(dev_materials[i].diffuseTexture), sizeof(Texture*), cudaMemcpyDeviceToHost);
+				glm::vec3* dev_data = nullptr;
+				cudaMemcpy(&dev_data, &(dev_diffuseTextures->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_data);
+				cudaFree(dev_diffuseTextures);
+			}
+			if (hst_scene->materials[i].normalTexture != nullptr)
+			{
+				Texture* dev_normalTextures = nullptr;
+				cudaMemcpy(&dev_normalTextures, &(dev_materials[i].normalTexture), sizeof(Texture*), cudaMemcpyDeviceToHost);
+				glm::vec3* dev_data = nullptr;
+				cudaMemcpy(&dev_data, &(dev_normalTextures->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+				cudaFree(dev_data);
+				cudaFree(dev_normalTextures);
+			}
+		}
 	}
 #endif
     cudaDeviceSynchronize();
     cudaFree(dev_geoms);
 	checkCUDAError("pathtraceFree: free geoms");
     cudaFree(dev_materials);
+    checkCUDAError("pathtraceFree: free materials");
     cudaFree(dev_intersections);
 
     checkCUDAError("pathtraceFree");
@@ -369,12 +412,16 @@ __global__ void computeIntersections(
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
+        glm::vec3 uv;
+        glm::mat3 TBN;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
 
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
+        glm::vec3 tmp_uv;
+        glm::mat3 tmp_TBN;
 
         // naive parse through global geoms
 
@@ -393,12 +440,7 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
 			else if (geom.type == MESH)
 			{
-				Mesh* mesh = geom.mesh;
-				Triangle* triangles = mesh->triangles;
-				Triangle tri = triangles[1];
-				glm::vec3 p0 = tri.points[0];
-				float p0x = p0.x;
-                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, outside);
+                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tmp_TBN, outside);
 				//checkCUDAError("computeIntersections: meshIntersectionTest");
 			}
 
@@ -410,6 +452,8 @@ __global__ void computeIntersections(
                 hit_geom_index = i;
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
+                uv = tmp_uv;
+                TBN = tmp_TBN;
             }
         }
 
@@ -423,6 +467,8 @@ __global__ void computeIntersections(
             intersections[path_index].t = t_min;
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
+            intersections[path_index].uv = uv;
+            intersections[path_index].TBN = TBN;
         }
     }
 }
@@ -473,8 +519,11 @@ __global__ void shadeMaterial(
                 scatterRay(pathSegments[idx], 
                     getPointOnRay(pathSegments[idx].ray, intersection.t), 
                     intersection.surfaceNormal, 
+                    intersection.uv,
+                    intersection.TBN,
                     material, 
                     rng);
+                glm::vec3 color = pathSegments[idx].color;
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often

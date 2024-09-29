@@ -1,6 +1,9 @@
 #include "interactions.h"
 
 #define TEST_DIFFUSE 0
+#define USE_DIFFUSE_TEXTURE 1
+#define USE_NORMAL_TEXTURE 1
+#define TEST_NORMAL_MAP 0
 
 __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
     glm::vec3 normal,
@@ -42,10 +45,21 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec3 uv) {
+    int x = (int)(uv.x * texture->width) % texture->width;
+    int y = (int)(uv.y * texture->height) % texture->height;
+    int index = y * texture->width + x;
+
+    glm::vec3 texColor = texture->data[index];
+    return texColor;
+}
+
 __host__ __device__ void scatterRay(
     PathSegment & pathSegment,
     glm::vec3 intersect,
     glm::vec3 normal,
+    glm::vec3 uv,
+    glm::mat3 TBN,
     const Material &m,
     thrust::default_random_engine &rng)
 {
@@ -61,15 +75,14 @@ __host__ __device__ void scatterRay(
 
 #if !TEST_DIFFUSE
     // Diffuse shading (Lambertian reflection)
-    if (!m.hasReflective && !m.hasRefractive) {
+    if (!m.hasReflective && !m.hasRefractive && !m.hasDiffuseTexture) {
         // Simple diffuse scattering
-		glm::vec3 newDirection = normalize(calculateRandomDirectionInHemisphere(normal, rng));
         pathSegment.ray.direction = newDirection;
 
 		float cosTheta = glm::abs(glm::dot(normal, newDirection));
 		pdf = cosTheta / PI;
 
-        // Multiply the path color by the material color (throughput)
+        // throughput
         if (pdf > EPSILON) {
             pathSegment.color *= m.color;
         }
@@ -80,19 +93,63 @@ __host__ __device__ void scatterRay(
 		// calculate specular reflection color
         
         // Adjust the color for reflective materials using the specular component
-        pathSegment.color *= m.specular.color;
+        pathSegment.color *= m.color;
     }
     else if (m.hasRefractive) {
-        float eta = (glm::dot(pathSegment.ray.direction, normal) > 0) ? m.indexOfRefraction : (1.0f / m.indexOfRefraction);
-        glm::vec3 refractedDir = glm::refract(pathSegment.ray.direction, glm::normalize(normal), eta);
-        if (glm::length(refractedDir) > 0) { // No total internal reflection
-            pathSegment.ray.direction = glm::normalize(refractedDir);
+        
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        float rand = u01(rng);
+        float cosTheta = glm::dot(normal, pathSegment.ray.direction);
+        float eta = (cosTheta > 0) ? (m.indexOfRefraction / 1.0f) : (1.0f / m.indexOfRefraction);
+        glm::vec3 refractDirection = glm::refract(pathSegment.ray.direction, normal, eta);
+
+        // Adjust normal direction and cosTheta for refraction calculations
+        if (cosTheta < 0) {
+            cosTheta = -cosTheta; //entering the medium
         }
-        else { // Total internal reflection
-            pathSegment.ray.direction = glm::reflect(pathSegment.ray.direction, normal);
+        else {
+            normal = -normal; // Flip the normal
         }
-        pathSegment.color *= m.color; // Consider material's absorption if applicable
+
+        // Calculate Fresnel reflectance using Schlick's approximation
+        float R0 = pow((1.0f - m.indexOfRefraction) / (1.0f + m.indexOfRefraction), 2);
+        float reflectance = R0 + (1 - R0) * pow(1 - cosTheta, 5);
+
+        // Check if the refraction results in total internal reflection
+        if (glm::length(refractDirection) == 0) {
+            reflectance = 1.0; 
+        }
+
+        if (rand < reflectance) {
+            // Reflect
+            newDirection = glm::reflect(pathSegment.ray.direction, normal);
+        }
+        else {
+            // Refract
+            newDirection = refractDirection;
+        }
+        pathSegment.color *= m.color;      
     }
+
+    // texture
+#if USE_DIFFUSE_TEXTURE
+    if (m.hasDiffuseTexture) {
+        glm::vec3 textureColor = textureSample(m.diffuseTexture, uv);
+        pathSegment.color *= textureColor;
+    }
+#endif
+#if USE_NORMAL_TEXTURE
+    if (m.hasNormalTexture) {
+        glm::vec3 sampledNormal = textureSample(m.normalTexture, uv);
+        sampledNormal = 2.0f * sampledNormal - glm::vec3(1.0f); // [0,1] to [-1, 1]
+        normal = normalize(TBN * sampledNormal);
+        newOrigin = intersect;
+        newDirection = normalize(calculateRandomDirectionInHemisphere(normal, rng));
+#if TEST_NORMAL_MAP
+        pathSegment.color = normal;
+#endif
+    }
+#endif
 
 #else   
     //test diffuse

@@ -88,6 +88,21 @@ struct Geom
 	Mesh* mesh;
 };
 
+struct Texture
+{
+    glm::vec3* data;
+    int width;
+    int height;
+
+    Texture(int w, int h) : width(w), height(h)
+    {
+        cudaMalloc(&data, width * height * sizeof(glm::vec3));
+    }
+
+	Texture() : width(0), height(0), data(nullptr){}
+
+};
+
 struct Material
 {
     glm::vec3 color;
@@ -100,6 +115,13 @@ struct Material
     float hasRefractive;
     float indexOfRefraction;
     float emittance;
+
+    // textures
+	int hasDiffuseTexture;
+	int hasNormalTexture;
+    Texture* diffuseTexture = nullptr;
+    Texture* normalTexture = nullptr;
+
 };
 
 struct Camera
@@ -139,4 +161,6 @@ struct ShadeableIntersection
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
+  glm::vec3 uv;
+  glm::mat3 TBN;
 };
