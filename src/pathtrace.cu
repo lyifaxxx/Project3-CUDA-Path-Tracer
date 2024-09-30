@@ -18,9 +18,13 @@
 
 #define FIREST_BOUNCE 0
 #define ERRORCHECK 1
+// compaction control
 #define STREAM_COMPACTION_INTERSECTION 1
 #define SORT_BY_MATERIAL 1
 #define STREAM_COMPACTION_PATH 1
+// dof
+#define DOF 1
+
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
@@ -124,8 +128,6 @@ void InitDataContainer(GuiDataContainer* imGuiData)
     guiData = imGuiData;
 }
 
-
-
 void allocateMemForMesh(const Mesh& mesh, Mesh* dev_meshes) {
 	// Allocate memory for vertices, normals, uvs, and triangles
     glm::vec3* dev_vertices = nullptr;
@@ -219,7 +221,10 @@ void pathtraceInit(Scene* scene)
 {
     hst_scene = scene;
 
-    const Camera& cam = hst_scene->state.camera;
+    Camera& cam = hst_scene->state.camera;
+    // set camera parameters with gui data
+    cam.focalDistance = guiData->focalDistance;
+    cam.lensRadius = guiData->lensRadius;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
     cudaDeviceSynchronize();
 
@@ -385,6 +390,20 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
             - cam.right * resolution_x
             - cam.up * resolution_y
         );
+
+#if DOF
+        // DoF
+		thrust::uniform_int_distribution<int> u01dof(0, 1);
+		float randRadius = cam.lensRadius * u01dof(rng);
+		float randAngle = 2.0f * PI * u01dof(rng);
+		glm::vec3 lensPos = randRadius * glm::vec3(cos(randAngle), sin(randAngle), 0.0f);
+
+		glm::vec3 focal_point = segment.ray.origin + segment.ray.direction * cam.focalDistance;
+
+		segment.ray.origin += lensPos.x * cam.right + lensPos.y * cam.up;
+		segment.ray.direction = glm::normalize(focal_point - segment.ray.origin);
+
+#endif
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
@@ -578,8 +597,12 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
 void pathtrace(uchar4* pbo, int frame, int iter)
 {
     const int traceDepth = hst_scene->state.traceDepth;
-    const Camera& cam = hst_scene->state.camera;
+    Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
+
+	// set camera parameters with gui data
+	cam.focalDistance = guiData->focalDistance;
+	cam.lensRadius = guiData->lensRadius;
 
     // 2D block for generating ray from camera
     const dim3 blockSize2d(8, 8);

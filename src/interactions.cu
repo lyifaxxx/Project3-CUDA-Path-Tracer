@@ -136,6 +136,7 @@ __host__ __device__ void scatterRay(
     if (m.hasDiffuseTexture) {
         glm::vec3 textureColor = textureSample(m.diffuseTexture, uv);
         pathSegment.color *= textureColor;
+        pathSegment.color *= 1.2;
     }
 #endif
 #if USE_NORMAL_TEXTURE
@@ -172,6 +173,5 @@ __host__ __device__ void scatterRay(
 	// UPDATE the path segment with the new ray origin and direction
     pathSegment.ray.origin = newOrigin;
     pathSegment.ray.direction = newDirection;
-    // After each scatter, reduce the number of remaining bounces
     pathSegment.remainingBounces--;
 }
