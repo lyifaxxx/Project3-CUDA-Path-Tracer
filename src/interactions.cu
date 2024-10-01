@@ -46,8 +46,8 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
 }
 
 __host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec3 uv) {
-    int x = (int)(uv.x * texture->width) % texture->width;
-    int y = (int)(uv.y * texture->height) % texture->height;
+    int x = (int)(uv.x * texture->width);
+    int y = (int)((1.0f - uv.y) * texture->height);
     int index = y * texture->width + x;
 
     glm::vec3 texColor = texture->data[index];

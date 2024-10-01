@@ -27,6 +27,12 @@
             "TYPE":"Specular",
             "RGB":[0.98, 0.98, 0.98],
             "ROUGHNESS":0.0
+        },
+        "cube":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.98, 0.98, 0.98],
+            "DIFFUSE_TEXTURE":"tex_nor_maps/cube_text.png"
         }
     },
     "Camera":
@@ -85,19 +91,12 @@
             "SCALE":[0.01,10.0,10.0]
         },
         {
-            "TYPE":"sphere",
-            "MATERIAL":"specular_white",
-            "TRANS":[-1.0,4.0,-1.0],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,3.0,3.0]
-        },
-        {
             "TYPE":"mesh",
-            "FILE":"objs/cube.obj",
-            "MATERIAL":"diffuse_white",
-            "TRANS":[2.0,4.0,1.0],
-            "ROTAT":[45.0,90.0,0.0],
-            "SCALE":[2.0,2.0,2.0]
+            "FILE":"objs/cube_text2.obj",
+            "MATERIAL":"cube",
+            "TRANS":[0.0,4.0,0.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[1.0,1.0,1.0]
         }
     ]
 }

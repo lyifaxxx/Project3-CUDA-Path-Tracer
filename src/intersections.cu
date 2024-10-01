@@ -188,7 +188,8 @@ __host__ __device__ float triangleIntersectionTest(
         glm::vec3 triUV0 = tri.uvs[0];
         glm::vec3 triUV1 = tri.uvs[1];
         glm::vec3 triUV2 = tri.uvs[2];
-        uv = bary.x * tri.uvs[0] + bary.y * tri.uvs[1] + bary.z * tri.uvs[2];
+        //uv = bary.x * tri.uvs[0] + bary.y * tri.uvs[1] + bary.z * tri.uvs[2];
+        uv = (1.0f - u - v) * tri.uvs[0] + u * tri.uvs[1] +v * tri.uvs[2];
 
         // compute TBN
         glm::vec3 tangent;

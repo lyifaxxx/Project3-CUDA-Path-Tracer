@@ -39,7 +39,7 @@ std::string getCurrentPath() {
 		std::cerr << "Error getting current directory." << std::endl;
 	}
 
-	std::cout << "Current directory: " << buffer << std::endl;
+	//std::cout << "Current directory: " << buffer << std::endl;
 	std::string currentPath(buffer);
 	size_t pos = currentPath.find_last_of("\\");
 
@@ -51,7 +51,7 @@ std::string getCurrentPath() {
 }
 
 // write mesh info to Geom
-void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vector<tinyobj::material_t>& materials) {
+void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vector<tinyobj::material_t>& materials, std::vector<Material>* scene_materials) {
     std::vector<glm::vec3> temp_vertices;
     std::vector<glm::vec3> temp_normals;
     std::vector<glm::vec3> temp_uvs;
@@ -59,6 +59,18 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 	std::vector<Triangle> temp_triangles;
 
 	unsigned int nextTriangleIndex = 0;
+
+	// load materials
+    for (unsigned int i = 0; i < materials.size(); i++)
+    {
+        auto mp = materials[i];
+		printf("Material name: %s\n", mp.name.c_str());
+        if (mp.diffuse_texname.length() > 0) {
+			std::cout << "Diffuse texture: " << mp.diffuse_texname << std::endl;
+
+        }
+
+    }
 
     for (unsigned int i = 0; i < shapes.size(); i++)
     {
@@ -94,6 +106,7 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 				t.uvs[2] = uv3;
 			}
 
+
             temp_triangles.push_back(t);
 			temp_vertices.push_back(p1);
 			temp_vertices.push_back(p2);
@@ -115,6 +128,7 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 			temp_indices.push_back(temp_indices.size());
 
         }
+        
     }
 
     geom->mesh->vertices = new glm::vec3[temp_vertices.size()];
@@ -143,7 +157,7 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 
 void loadTexture(const std::string& texturePath, Texture* texture) {
 	int width, height, nrChannels;
-	unsigned char* img = stbi_load(texturePath.c_str(), &width, &height, &nrChannels, 0);
+	unsigned char* img = stbi_load(texturePath.c_str(), &width, &height, &nrChannels, 3);
 	if (img) {
 		texture->width = width;
 		texture->height = height;
@@ -281,11 +295,11 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			std::cout << meshFilePath << std::endl;
             // load obj file
 			newGeom.mesh = new Mesh();
-            std::vector<tinyobj::shape_t> shapes; std::vector<tinyobj::material_t> materials;
-            std::string errors = tinyobj::LoadObj(shapes, materials, meshFilePath.c_str());
+            std::vector<tinyobj::shape_t> shapes; std::vector<tinyobj::material_t> materials_obj;
+            std::string errors = tinyobj::LoadObj(shapes, materials_obj, meshFilePath.c_str());
             std::cout << errors << std::endl;
             if (errors.size() == 0) {
-				writeMeshInfo(&newGeom, shapes, materials);
+				writeMeshInfo(&newGeom, shapes, materials_obj, &materials);
 			}
             else {
                 std::cout << "Error loading mesh: " << errors << std::endl;

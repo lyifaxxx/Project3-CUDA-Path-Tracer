@@ -16,14 +16,14 @@
 #include "intersections.h"
 #include "interactions.h"
 
-#define FIREST_BOUNCE 0
+#define FIREST_BOUNCE 1
 #define ERRORCHECK 1
 // compaction control
 #define STREAM_COMPACTION_INTERSECTION 1
 #define SORT_BY_MATERIAL 1
 #define STREAM_COMPACTION_PATH 1
 // dof
-#define DOF 1
+#define DOF 0
 
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
