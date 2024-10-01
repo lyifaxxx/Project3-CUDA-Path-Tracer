@@ -10,6 +10,7 @@
 #include "TinyObj/tiny_obj_loader.h"
 #include <cstdlib> 
 #include <cstring>
+#include "stb_image.h"
 
 using json = nlohmann::json;
 
@@ -28,6 +29,21 @@ Scene::Scene(string filename)
         cout << "Couldn't read from " << filename << endl;
         exit(-1);
     }
+}
+
+std::string getCurrentPath() {
+    char buffer[MAX_PATH];
+    DWORD dwRet = GetCurrentDirectory(MAX_PATH, buffer);
+    if (dwRet == 0) {
+        std::cerr << "Error getting current directory." << std::endl;
+    }
+    std::cout << "Current directory: " << buffer << std::endl;
+    std::string currentPath(buffer);
+    size_t pos = currentPath.find_last_of("\\");
+    if (pos != std::string::npos) {
+        currentPath = currentPath.substr(0, pos); // Remove the last directory part ('build')
+    }
+    return currentPath;
 }
 
 // write mesh info to Geom
@@ -121,6 +137,29 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 	geom->mesh->num_triangles = temp_triangles.size();
 }
 
+void loadTexture(const std::string& texturePath, Texture* texture) {
+    int width, height, nrChannels;
+    unsigned char* img = stbi_load(texturePath.c_str(), &width, &height, &nrChannels, 0);
+    if (img) {
+        texture->width = width;
+        texture->height = height;
+        glm::vec3* hostData = new glm::vec3[width * height];
+        for (int i = 0; i < width * height; i++)
+        {
+            glm::vec3 textureColor = glm::vec3(img[i * 3], img[i * 3 + 1], img[i * 3 + 2]) / 255.0f;
+            hostData[i] = textureColor;
+            /*int row = i % width;
+            int col = i - width * row;
+            std::cout << "(" << row / width << "," << col / height << "): "
+                << textureColor[0] << ", " << textureColor[1] << "," << textureColor[2] << std::endl;*/
+        }
+        texture->data = hostData;
+    }
+    else {
+        std::cerr << "Failed to load texture: " << texturePath << std::endl;
+    }
+}
+
 
 void Scene::loadFromJSON(const std::string& jsonName)
 {
@@ -138,6 +177,36 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+#if 1
+            // texture
+            if (p.find("DIFFUSE_TEXTURE") != p.end() && !p["DIFFUSE_TEXTURE"].is_null())
+            {
+                newMaterial.diffuseTexture = new Texture();
+                std::string workingDir = getCurrentPath();
+                std::string texturePath = workingDir + "\\scenes\\" + p["DIFFUSE_TEXTURE"].get<std::string>();
+                loadTexture(texturePath, newMaterial.diffuseTexture);
+                newMaterial.hasDiffuseTexture = true;
+                std::cout << "Diffuse texture loaded: " << p["DIFFUSE_TEXTURE"] << std::endl;
+            }
+            else
+            {
+                newMaterial.hasDiffuseTexture = false;
+            }
+            // Load normal texture if available
+            if (p.find("NORMAL_TEXTURE") != p.end() && !p["NORMAL_TEXTURE"].is_null())
+            {
+                newMaterial.normalTexture = new Texture();
+                std::string workingDir = getCurrentPath();
+                std::string texturePath = workingDir + "\\scenes\\" + p["NORMAL_TEXTURE"].get<std::string>();
+                loadTexture(texturePath, newMaterial.normalTexture);
+                newMaterial.hasNormalTexture = true;
+                // std::cout << "Normal texture loaded: " << p["NORMAL_TEXTURE"] << std::endl;
+            }
+            else
+            {
+                newMaterial.hasNormalTexture = false;
+            }
+#endif       
         }
         else if (p["TYPE"] == "Emitting")
         {
