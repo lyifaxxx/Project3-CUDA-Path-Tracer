@@ -2,7 +2,7 @@
 
 #define TEST_DIFFUSE 0
 #define USE_DIFFUSE_TEXTURE 1
-#define USE_NORMAL_TEXTURE 1
+#define USE_NORMAL_TEXTURE 0
 #define TEST_NORMAL_MAP 0
 
 __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
@@ -96,7 +96,6 @@ __host__ __device__ void scatterRay(
         pathSegment.color *= m.color;
     }
     else if (m.hasRefractive) {
-        
         thrust::uniform_real_distribution<float> u01(0, 1);
         float rand = u01(rng);
         float cosTheta = glm::dot(normal, pathSegment.ray.direction);
@@ -131,12 +130,16 @@ __host__ __device__ void scatterRay(
         pathSegment.color *= m.color;      
     }
 
+
+
+
     // texture
 #if USE_DIFFUSE_TEXTURE
     if (m.hasDiffuseTexture) {
         glm::vec3 textureColor = textureSample(m.diffuseTexture, uv);
+        // gamma correction to texture color
+        textureColor = glm::pow(textureColor, glm::vec3(1.0f / 2.2f));
         pathSegment.color *= textureColor;
-        pathSegment.color *= 1.2;
     }
 #endif
 #if USE_NORMAL_TEXTURE
