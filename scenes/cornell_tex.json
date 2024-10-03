@@ -72,7 +72,7 @@
         },
         {
             "TYPE":"cube",
-            "MATERIAL":"bricks",
+            "MATERIAL":"diffuse_white",
             "TRANS":[0.0,5.0,-5.0],
             "ROTAT":[0.0,90.0,0.0],
             "SCALE":[0.01,10.0,10.0]

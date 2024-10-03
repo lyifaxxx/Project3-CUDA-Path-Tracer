@@ -16,7 +16,7 @@
 #include "intersections.h"
 #include "interactions.h"
 
-#define FIREST_BOUNCE 1
+#define FIREST_BOUNCE 0
 #define ERRORCHECK 1
 // compaction control
 #define STREAM_COMPACTION_INTERSECTION 1
@@ -24,6 +24,8 @@
 #define STREAM_COMPACTION_PATH 1
 // dof
 #define DOF 0
+// debug
+#define USE_NORMAL_TEXTURE 1
 
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -120,8 +122,7 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
-//static Mesh* dev_meshes = NULL;
-//static Triangle* dev_triangles = NULL;
+
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -142,8 +143,8 @@ void allocateMemForMesh(const Mesh& mesh, Mesh* dev_meshes) {
 	cudaMalloc(&dev_normals, mesh.num_normals * sizeof(glm::vec3));
 	cudaMemcpy(dev_normals, mesh.normals, mesh.num_normals * sizeof(glm::vec3), cudaMemcpyHostToDevice);
 
-	cudaMalloc(&dev_uvs, mesh.num_uvs * sizeof(glm::vec3));
-	cudaMemcpy(dev_uvs, mesh.uvs, mesh.num_uvs * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_uvs, mesh.num_uvs * sizeof(glm::vec2));
+	cudaMemcpy(dev_uvs, mesh.uvs, mesh.num_uvs * sizeof(glm::vec2), cudaMemcpyHostToDevice);
 
 	cudaMalloc(&dev_indices, mesh.num_indices * sizeof(int));
 	cudaMemcpy(dev_indices, mesh.indices, mesh.num_indices * sizeof(int), cudaMemcpyHostToDevice);
@@ -431,7 +432,9 @@ __global__ void computeIntersections(
         float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
-        glm::vec3 uv;
+        glm::vec3 bitangent;
+        glm::vec3 tangent;
+        glm::vec2 uv;
         glm::mat3 TBN;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
@@ -439,8 +442,10 @@ __global__ void computeIntersections(
 
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
-        glm::vec3 tmp_uv;
+        glm::vec2 tmp_uv;
         glm::mat3 tmp_TBN;
+		glm::vec3 tmp_bitangent;
+		glm::vec3 tmp_tangent;
 
         // naive parse through global geoms
 
@@ -459,7 +464,15 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
 			else if (geom.type == MESH)
 			{
-                t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tmp_TBN, outside);
+                t = meshIntersectionTest(geom, 
+                    pathSegment.ray, 
+                    tmp_intersect, 
+                    tmp_normal, 
+                    tmp_tangent, 
+                    tmp_bitangent, 
+                    tmp_uv, 
+                   // tmp_TBN, 
+                    outside);
 				//checkCUDAError("computeIntersections: meshIntersectionTest");
 			}
 
@@ -471,6 +484,8 @@ __global__ void computeIntersections(
                 hit_geom_index = i;
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
+				bitangent = tmp_bitangent;
+				tangent = tmp_tangent;
                 uv = tmp_uv;
                 TBN = tmp_TBN;
             }
@@ -487,7 +502,11 @@ __global__ void computeIntersections(
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
             intersections[path_index].uv = uv;
-            intersections[path_index].TBN = TBN;
+#if USE_NORMAL_TEXTURE
+			intersections[path_index].tangent = tangent;
+			intersections[path_index].bitangent = bitangent;
+            //intersections[path_index].TBN = &TBN;
+#endif
         }
     }
 }
@@ -538,11 +557,25 @@ __global__ void shadeMaterial(
                 scatterRay(pathSegments[idx], 
                     getPointOnRay(pathSegments[idx].ray, intersection.t), 
                     intersection.surfaceNormal, 
+#if USE_NORMAL_TEXTURE
+                    intersection.tangent,
+					intersection.bitangent,
+#else
+					glm::vec3(0.0f),
+					glm::vec3(0.0f),
+#endif
                     intersection.uv,
-                    intersection.TBN,
                     material, 
                     rng);
                 glm::vec3 color = pathSegments[idx].color;
+				// russian roulette
+				float p = glm::min(glm::max(color.x, glm::max(color.y, color.z)), 1.0f);
+                if (u01(rng) > p) {
+                    pathSegments[idx].remainingBounces = 0;
+				}
+                else {
+                    pathSegments[idx].color /= p;
+                }
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
@@ -734,9 +767,11 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 #if FIREST_BOUNCE
         iterationComplete = true; // TODO: should be based off stream compaction results.
 #else
-		accumulateColor << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_image, dev_paths);
+
+        accumulateColor << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_image, dev_paths);
         cudaDeviceSynchronize();
-#if STREAM_COMPACTION_PATH
+
+    #if STREAM_COMPACTION_PATH
         // Stream compaction
 		PathSegment* new_end = thrust::remove_if(thrust::device, dev_paths, dev_path_end, hasNoMoreBounces());
         cudaDeviceSynchronize();
@@ -745,7 +780,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         if (num_paths <= 0 || depth > traceDepth) {
             iterationComplete = true;
         }
-#endif
+    #endif
         
 #endif
         if (guiData != NULL)

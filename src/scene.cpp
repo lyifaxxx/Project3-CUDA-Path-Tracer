@@ -3,11 +3,9 @@
 #include <cstring>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtx/string_cast.hpp>
-#include <unordered_map>
 #include <windows.h>
 #include "json.hpp"
 #include "scene.h"
-#include "TinyObj/tiny_obj_loader.h"
 #include <cstdlib> 
 #include <cstring>
 #include "stb_image.h"
@@ -31,6 +29,25 @@ Scene::Scene(string filename)
     }
 }
 
+void Scene::loadTexture(const std::string& texturePath, Texture* texture) {
+    int width, height, nrChannels;
+    unsigned char* img = stbi_load(texturePath.c_str(), &width, &height, &nrChannels, 3);
+    if (img) {
+        texture->width = width;
+        texture->height = height;
+        glm::vec3* hostData = new glm::vec3[width * height];
+        for (int i = 0; i < width * height; i++)
+        {
+            glm::vec3 textureColor = glm::vec3(img[i * 3], img[i * 3 + 1], img[i * 3 + 2]) / 255.0f;
+            hostData[i] = textureColor;
+        }
+        texture->data = hostData;
+    }
+    else {
+        std::cerr << "Failed to load texture: " << texturePath << std::endl;
+    }
+}
+
 std::string getCurrentPath() {
 	char buffer[MAX_PATH];
 	DWORD dwRet = GetCurrentDirectory(MAX_PATH, buffer);
@@ -51,10 +68,16 @@ std::string getCurrentPath() {
 }
 
 // write mesh info to Geom
-void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vector<tinyobj::material_t>& materials, std::vector<Material>* scene_materials) {
+void Scene::writeMeshInfo(tinyobj::attrib_t* attrib, 
+    Geom* geom, 
+    std::vector<tinyobj::shape_t>& shapes, 
+    std::vector<tinyobj::material_t>& materials, 
+    std::vector<Material>* scene_materials) 
+{
+
     std::vector<glm::vec3> temp_vertices;
     std::vector<glm::vec3> temp_normals;
-    std::vector<glm::vec3> temp_uvs;
+    std::vector<glm::vec2> temp_uvs;
     std::vector<int> temp_indices;
 	std::vector<Triangle> temp_triangles;
 
@@ -65,32 +88,59 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
     {
         auto mp = materials[i];
 		printf("Material name: %s\n", mp.name.c_str());
+		Material mtl_material{};
         if (mp.diffuse_texname.length() > 0) {
 			std::cout << "Diffuse texture: " << mp.diffuse_texname << std::endl;
-
+            mtl_material.hasDiffuseTexture = 1;
+			mtl_material.diffuseTexture = new Texture();
+			std::string workingDir = getCurrentPath();
+			std::string texturePath = workingDir + "\\scenes\\objs\\" + mp.diffuse_texname;
+			std::cout << "Texture path: " << texturePath << std::endl;
+            Scene::loadTexture(texturePath, mtl_material.diffuseTexture);
         }
+        // normal map
+		if (mp.normal_texname.length() > 0) {
+			std::cout << "Normal texture: " << mp.normal_texname << std::endl;
+            mtl_material.hasNormalTexture = 1;
+			mtl_material.normalTexture = new Texture();
+			std::string workingDir = getCurrentPath();
+			std::string texturePath = workingDir + "\\scenes\\objs\\" + mp.normal_texname;
+			Scene::loadTexture(texturePath, mtl_material.normalTexture);
+		}
+		mtl_material.color = glm::vec3(mp.diffuse[0], mp.diffuse[1], mp.diffuse[2]);
+		mtl_material.specular.color = glm::vec3(mp.specular[0], mp.specular[1], mp.specular[2]);
+		mtl_material.specular.exponent = 1.0 / mp.shininess * mp.shininess;
+		mtl_material.emittance = (mp.emission[0] + mp.emission[1] + mp.emission[2]) / 3.f;
+		mtl_material.hasReflective = mp.illum == 2 ? 1 : 0;
+		mtl_material.hasRefractive = mp.illum == 3 ? 1 : 0;
+		mtl_material.indexOfRefraction = mp.ior;
+
+		// add material to scene materials
+		Scene::materials.push_back(mtl_material);
+		geom->materialid = Scene::materials.size() - 1;
+        
 
     }
 
     for (unsigned int i = 0; i < shapes.size(); i++)
     {
-        std::vector<float>& positions = shapes[i].mesh.positions;
-        std::vector<float>& normals = shapes[i].mesh.normals;
-        std::vector<float>& uvs = shapes[i].mesh.texcoords;
-        std::vector<unsigned int>& indices = shapes[i].mesh.indices;
-        for (unsigned int j = 0; j < indices.size(); j += 3) {
-			// triangulate
-            glm::vec3 p1(positions[indices[j] * 3], positions[indices[j] * 3 + 1], positions[indices[j] * 3 + 2]);
-            glm::vec3 p2(positions[indices[j + 1] * 3], positions[indices[j + 1] * 3 + 1], positions[indices[j + 1] * 3 + 2]);
-            glm::vec3 p3(positions[indices[j + 2] * 3], positions[indices[j + 2] * 3 + 1], positions[indices[j + 2] * 3 + 2]);
+        std::vector<float>& positions = attrib->vertices;
+        std::vector<float>& normals = attrib->normals;
+        std::vector<float>& uvs = attrib->texcoords;
+		std::vector<tinyobj::index_t> indices = shapes[i].mesh.indices;
+        for (unsigned int j = 0; j < shapes[i].mesh.indices.size(); j += 3) {
+            // triangulate
+            glm::vec3 p1(positions[indices[j].vertex_index * 3], positions[indices[j].vertex_index * 3 + 1], positions[indices[j].vertex_index * 3 + 2]);
+            glm::vec3 p2(positions[indices[j + 1].vertex_index * 3], positions[indices[j + 1].vertex_index * 3 + 1], positions[indices[j + 1].vertex_index * 3 + 2]);
+            glm::vec3 p3(positions[indices[j + 2].vertex_index * 3], positions[indices[j + 2].vertex_index * 3 + 1], positions[indices[j + 2].vertex_index * 3 + 2]);
 
             Triangle t = Triangle(p1, p2, p3, nextTriangleIndex++);
 
 			if (normals.size() > 0)
 			{
-				glm::vec3 n1(normals[indices[j] * 3], normals[indices[j] * 3 + 1], normals[indices[j] * 3 + 2]);
-				glm::vec3 n2(normals[indices[j + 1] * 3], normals[indices[j + 1] * 3 + 1], normals[indices[j + 1] * 3 + 2]);
-				glm::vec3 n3(normals[indices[j + 2] * 3], normals[indices[j + 2] * 3 + 1], normals[indices[j + 2] * 3 + 2]);
+				glm::vec3 n1(normals[indices[j].normal_index * 3], normals[indices[j].normal_index * 3 + 1], normals[indices[j].normal_index * 3 + 2]);
+				glm::vec3 n2(normals[indices[j + 1].normal_index * 3], normals[indices[j + 1].normal_index * 3 + 1], normals[indices[j + 1].normal_index * 3 + 2]);
+				glm::vec3 n3(normals[indices[j + 2].normal_index * 3], normals[indices[j + 2].normal_index * 3 + 1], normals[indices[j + 2].normal_index * 3 + 2]);
 				t.normals[0] = n1;
 				t.normals[1] = n2;
 				t.normals[2] = n3;
@@ -98,9 +148,9 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 
 			if (uvs.size() > 0)
 			{
-				glm::vec3 uv1(uvs[indices[j] * 2], uvs[indices[j] * 2 + 1], 0);
-				glm::vec3 uv2(uvs[indices[j + 1] * 2], uvs[indices[j + 1] * 2 + 1], 0);
-				glm::vec3 uv3(uvs[indices[j + 2] * 2], uvs[indices[j + 2] * 2 + 1], 0);
+				glm::vec2 uv1(uvs[indices[j].texcoord_index * 2], uvs[indices[j].texcoord_index * 2 + 1]);
+				glm::vec2 uv2(uvs[indices[j + 1].texcoord_index * 2], uvs[indices[j + 1].texcoord_index * 2 + 1]);
+				glm::vec2 uv3(uvs[indices[j + 2].texcoord_index * 2], uvs[indices[j + 2].texcoord_index * 2 + 1]);
 				t.uvs[0] = uv1;
 				t.uvs[1] = uv2;
 				t.uvs[2] = uv3;
@@ -137,7 +187,7 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
     geom->mesh->normals = new glm::vec3[temp_normals.size()];
     std::copy(temp_normals.begin(), temp_normals.end(), geom->mesh->normals);
 
-    geom->mesh->uvs = new glm::vec3[temp_uvs.size()]; 
+    geom->mesh->uvs = new glm::vec2[temp_uvs.size()]; 
     std::copy(temp_uvs.begin(), temp_uvs.end(), geom->mesh->uvs);
 
     geom->mesh->indices = new int[temp_indices.size()];
@@ -155,28 +205,6 @@ void writeMeshInfo(Geom* geom, std::vector<tinyobj::shape_t>& shapes, std::vecto
 	geom->mesh->num_triangles = temp_triangles.size();
 }
 
-void loadTexture(const std::string& texturePath, Texture* texture) {
-	int width, height, nrChannels;
-	unsigned char* img = stbi_load(texturePath.c_str(), &width, &height, &nrChannels, 3);
-	if (img) {
-		texture->width = width;
-		texture->height = height;
-        glm::vec3* hostData = new glm::vec3[width * height];
-        for (int i = 0; i < width * height; i++)
-        {
-            glm::vec3 textureColor = glm::vec3(img[i * 3], img[i * 3 + 1], img[i * 3 + 2]) / 255.0f;
-            hostData[i] = textureColor;
-            /*int row = i % width;
-            int col = i - width * row;
-            std::cout << "(" << row / width << "," << col / height << "): " 
-                << textureColor[0] << ", " << textureColor[1] << "," << textureColor[2] << std::endl;*/
-        }
-		texture->data = hostData;
-	}
-	else {
-		std::cerr << "Failed to load texture: " << texturePath << std::endl;
-	}
-}
 
 
 void Scene::loadFromJSON(const std::string& jsonName)
@@ -202,7 +230,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 newMaterial.diffuseTexture = new Texture();
 				std::string workingDir = getCurrentPath();
 				std::string texturePath = workingDir + "\\scenes\\" + p["DIFFUSE_TEXTURE"].get<std::string>();
-				loadTexture(texturePath, newMaterial.diffuseTexture);
+				Scene::loadTexture(texturePath, newMaterial.diffuseTexture);
                 newMaterial.hasDiffuseTexture = true;
                 std::cout << "Diffuse texture loaded: " << p["DIFFUSE_TEXTURE"] << std::endl;
             }
@@ -217,9 +245,9 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 newMaterial.normalTexture = new Texture();
 				std::string workingDir = getCurrentPath();
 				std::string texturePath = workingDir + "\\scenes\\" + p["NORMAL_TEXTURE"].get<std::string>();
-				loadTexture(texturePath, newMaterial.normalTexture);
+                Scene::loadTexture(texturePath, newMaterial.normalTexture);
                 newMaterial.hasNormalTexture = true;
-                // std::cout << "Normal texture loaded: " << p["NORMAL_TEXTURE"] << std::endl;
+                std::cout << "Normal texture loaded: " << p["NORMAL_TEXTURE"] << std::endl;
             }
             else
             {
@@ -290,16 +318,35 @@ void Scene::loadFromJSON(const std::string& jsonName)
                 currentPath = currentPath.substr(0, pos); // Remove the last directory part ('build')
             }
             currentPath += "\\scenes";
+			std::string mtl_path = currentPath + "\\objs";
             meshFilePath = currentPath + "\\" + meshFilePath;
             //test mesh file path
 			std::cout << meshFilePath << std::endl;
             // load obj file
 			newGeom.mesh = new Mesh();
-            std::vector<tinyobj::shape_t> shapes; std::vector<tinyobj::material_t> materials_obj;
-            std::string errors = tinyobj::LoadObj(shapes, materials_obj, meshFilePath.c_str());
-            std::cout << errors << std::endl;
-            if (errors.size() == 0) {
-				writeMeshInfo(&newGeom, shapes, materials_obj, &materials);
+            std::vector<tinyobj::shape_t> shapes; 
+            std::vector<tinyobj::material_t> materials_obj;
+            tinyobj::attrib_t attrib;
+            std::string obj_errors;
+			std::string obj_warnings;
+            bool errors = tinyobj::LoadObj(&attrib, 
+                &shapes, 
+                &materials_obj, 
+                &obj_warnings, 
+                &obj_errors, 
+                meshFilePath.c_str(), mtl_path.c_str());
+            if (!obj_warnings.empty()) {
+                std::cout << "WARN: " << obj_warnings << std::endl;
+            }
+            if (!obj_errors.empty()) {
+                std::cerr << obj_errors << std::endl;
+            }
+            if (obj_warnings.empty() && obj_errors.empty()) {
+				writeMeshInfo(&attrib, 
+                    &newGeom, 
+                    shapes, 
+                    materials_obj, 
+                    &materials);
 			}
             else {
                 std::cout << "Error loading mesh: " << errors << std::endl;
@@ -307,7 +354,11 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			this->num_meshes++;
 
 		}
-        newGeom.materialid = MatNameToID[p["MATERIAL"]];
+        if (p.find("MATERIAL") != p.end() && !p["MATERIAL"].is_null())
+        {
+            newGeom.materialid = MatNameToID[p["MATERIAL"]];
+        }
+
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];
         const auto& scale = p["SCALE"];

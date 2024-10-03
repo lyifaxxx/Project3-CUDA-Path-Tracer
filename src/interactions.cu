@@ -2,7 +2,7 @@
 
 #define TEST_DIFFUSE 0
 #define USE_DIFFUSE_TEXTURE 1
-#define USE_NORMAL_TEXTURE 0
+#define USE_NORMAL_TEXTURE 1
 #define TEST_NORMAL_MAP 0
 
 __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
@@ -45,7 +45,7 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
-__host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec3 uv) {
+__host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec2 uv) {
     int x = (int)(uv.x * texture->width);
     int y = (int)((1.0f - uv.y) * texture->height);
     int index = y * texture->width + x;
@@ -58,8 +58,10 @@ __host__ __device__ void scatterRay(
     PathSegment & pathSegment,
     glm::vec3 intersect,
     glm::vec3 normal,
-    glm::vec3 uv,
-    glm::mat3 TBN,
+    glm::vec3 tangent,
+    glm::vec3 bitangent,
+    glm::vec2 uv,
+    //glm::mat3 TBN,
     const Material &m,
     thrust::default_random_engine &rng)
 {
@@ -107,7 +109,7 @@ __host__ __device__ void scatterRay(
             cosTheta = -cosTheta; //entering the medium
         }
         else {
-            normal = -normal; // Flip the normal
+            //normal = -normal; // Flip the normal
         }
 
         // Calculate Fresnel reflectance using Schlick's approximation
@@ -115,9 +117,9 @@ __host__ __device__ void scatterRay(
         float reflectance = R0 + (1 - R0) * pow(1 - cosTheta, 5);
 
         // Check if the refraction results in total internal reflection
-        if (glm::length(refractDirection) == 0) {
+        /*if (glm::length(refractDirection) == 0) {
             reflectance = 1.0; 
-        }
+        }*/
 
         if (rand < reflectance) {
             // Reflect
@@ -127,6 +129,7 @@ __host__ __device__ void scatterRay(
             // Refract
             newDirection = refractDirection;
         }
+		newOrigin = intersect - EPSILON * normal;
         pathSegment.color *= m.color;      
     }
 
@@ -146,6 +149,7 @@ __host__ __device__ void scatterRay(
     if (m.hasNormalTexture) {
         glm::vec3 sampledNormal = textureSample(m.normalTexture, uv);
         sampledNormal = 2.0f * sampledNormal - glm::vec3(1.0f); // [0,1] to [-1, 1]
+		glm::mat3 TBN = glm::mat3(tangent, bitangent, normal);
         normal = normalize(TBN * sampledNormal);
         newOrigin = intersect;
         newDirection = normalize(calculateRandomDirectionInHemisphere(normal, rng));

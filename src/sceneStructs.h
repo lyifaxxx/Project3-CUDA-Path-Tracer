@@ -25,7 +25,7 @@ struct Triangle
 {
     glm::vec3 points[3];
     glm::vec3 normals[3];
-    glm::vec3 uvs[3]; 
+    glm::vec2 uvs[3]; 
 	glm::vec3 planeNormal;
     int index_in_mesh;
 	int materialid;
@@ -51,7 +51,7 @@ struct Mesh
 {
 	glm::vec3* vertices;
     glm::vec3* normals;
-    glm::vec3* uvs;
+    glm::vec2* uvs;
 	int* indices;
 	int num_vertices;
 	int num_normals;
@@ -165,6 +165,8 @@ struct ShadeableIntersection
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
-  glm::vec3 uv;
-  glm::mat3 TBN;
+  glm::vec2 uv;
+  //glm::mat3* TBN;
+  glm::vec3 bitangent;
+  glm::vec3 tangent;
 };

@@ -31,8 +31,7 @@
         "cube":
         {
             "TYPE":"Diffuse",
-            "RGB":[0.98, 0.98, 0.98],
-            "DIFFUSE_TEXTURE":"tex_nor_maps/cube_text.png"
+            "RGB":[0.98, 0.98, 0.98]
         }
     },
     "Camera":
@@ -93,7 +92,6 @@
         {
             "TYPE":"mesh",
             "FILE":"objs/cube_text2.obj",
-            "MATERIAL":"cube",
             "TRANS":[0.0,4.0,0.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[1.0,1.0,1.0]

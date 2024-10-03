@@ -138,8 +138,10 @@ __host__ __device__ float triangleIntersectionTest(
 	Ray r,
 	glm::vec3& intersectionPoint,
 	glm::vec3& normal,
-    glm::vec3& uv,
-    glm::mat3& TBN,
+	glm::vec3& tangent,
+	glm::vec3& bitangent,
+    glm::vec2& uv,
+    //glm::mat3& TBN,
 	bool& outside)
 {
     glm::vec3 ro = multiplyMV(geom.inverseTransform, glm::vec4(r.origin, 1.0f));
@@ -151,8 +153,8 @@ __host__ __device__ float triangleIntersectionTest(
 
 	glm::vec3 e1 = v1 - v0;
 	glm::vec3 e2 = v2 - v0;
-    glm::vec3 deltaUV1 = tri.uvs[1] - tri.uvs[0];
-    glm::vec3 deltaUV2 = tri.uvs[2] - tri.uvs[0];
+    glm::vec2 deltaUV1 = tri.uvs[1] - tri.uvs[0];
+    glm::vec2 deltaUV2 = tri.uvs[2] - tri.uvs[0];
 	glm::vec3 h = cross(rt.direction, e2);
     float a = glm::dot(e1, h);
 
@@ -184,21 +186,20 @@ __host__ __device__ float triangleIntersectionTest(
         glm::vec3 objspaceIntersection = getPointOnRay(rt, t);
 		intersectionPoint = multiplyMV(geom.transform, glm::vec4(objspaceIntersection, 1.f));
 		normal = glm::normalize(multiplyMV(geom.invTranspose, glm::vec4(objspaceIntersection, 0.f)));     
-        glm::vec3 bary = barycentric(objspaceIntersection, v0, v1, v2);
-        glm::vec3 triUV0 = tri.uvs[0];
-        glm::vec3 triUV1 = tri.uvs[1];
-        glm::vec3 triUV2 = tri.uvs[2];
-        //uv = bary.x * tri.uvs[0] + bary.y * tri.uvs[1] + bary.z * tri.uvs[2];
+        //glm::vec3 bary = barycentric(objspaceIntersection, v0, v1, v2);
+        glm::vec2 triUV0 = tri.uvs[0];
+        glm::vec2 triUV1 = tri.uvs[1];
+        glm::vec2 triUV2 = tri.uvs[2];
         uv = (1.0f - u - v) * tri.uvs[0] + u * tri.uvs[1] +v * tri.uvs[2];
 
         // compute TBN
-        glm::vec3 tangent;
+        //glm::vec3 tangent;
         tangent.x = f * (deltaUV2.y * e1.x - deltaUV1.y * e2.x);
         tangent.y = f * (deltaUV2.y * e1.y - deltaUV1.y * e2.y);
         tangent.z = f * (deltaUV2.y * e1.z - deltaUV1.y * e2.z);
         tangent = glm::normalize(tangent);
 
-        glm::vec3 bitangent;
+        //glm::vec3 bitangent;
         bitangent.x = f * (-deltaUV2.x * e1.x + deltaUV1.x * e2.x);
         bitangent.y = f * (-deltaUV2.x * e1.y + deltaUV1.x * e2.y);
         bitangent.z = f * (-deltaUV2.x * e1.z + deltaUV1.x * e2.z);
@@ -209,7 +210,8 @@ __host__ __device__ float triangleIntersectionTest(
         bitangent = glm::cross(normal, tangent);
         bitangent = glm::normalize(bitangent);
 
-        glm::mat3 TBN = glm::mat3(tangent, bitangent, normal);
+        //TBN = glm::mat3(tangent, bitangent, normal);
+
         
 		outside = true;
 		return glm::length(r.origin - intersectionPoint);
@@ -225,8 +227,10 @@ __host__ __device__ float meshIntersectionTest(
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
-    glm::vec3& uv,
-    glm::mat3& TBN,
+	glm::vec3& tangent,
+	glm::vec3& bitangent,
+    glm::vec2& uv,
+    //glm::mat3& TBN,
     bool& outside
 ) {
     float closestT = FLT_MAX;
@@ -236,7 +240,8 @@ __host__ __device__ float meshIntersectionTest(
 
     for (int i = 0; i < num_triangles; ++i) {
         const Triangle& tri = geom.mesh->triangles[i];
-        glm::vec3 tempIntersectionPoint, tempNormal, tempUV;
+        glm::vec3 tempIntersectionPoint, tempNormal, tempTangent, tempBitangent;
+        glm::vec2 tempUV;
         glm::mat3 tempTBN;
         bool tempOutside;
 
@@ -256,8 +261,10 @@ __host__ __device__ float meshIntersectionTest(
             r,
             tempIntersectionPoint,
             tempNormal,
+			tempTangent,
+			tempBitangent,
             tempUV,
-            tempTBN,
+            //tempTBN,
             tempOutside
         );
         
@@ -266,8 +273,10 @@ __host__ __device__ float meshIntersectionTest(
             closestT = t;
             intersectionPoint = tempIntersectionPoint;
             normal = tempNormal;
+			tangent = tempTangent;
+			bitangent = tempBitangent;
             uv = tempUV;
-            TBN = tempTBN;
+            //TBN = tempTBN;
             outside = tempOutside;
             hitTriangle = i;
         }

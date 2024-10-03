@@ -33,7 +33,7 @@
             "TYPE":"Diffuse",
             "RGB":[0.5,0.5, 0.5],
             "DIFFUSE_TEXTURE":"tex_nor_maps/ninja_d.png",
-            "NORMAL_TEXTURE":"tex_nor_maps/ninja_n.jpg"
+            "NORMAL_TEXTURE":"tex_nor_maps/ninja_n.png"
         }
     },
     "Camera":
@@ -95,7 +95,7 @@
             "TYPE":"mesh",
             "FILE":"objs/ninja.obj",
             "MATERIAL":"ninja",
-            "TRANS":[2.0,1.0,2.0],
+            "TRANS":[0.0,0.0,2.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[1.0,1.0,1.0]
         }
