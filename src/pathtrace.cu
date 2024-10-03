@@ -259,6 +259,8 @@ void pathtraceInit(Scene* scene)
 	cudaMalloc(&dev_diffuseTextures, sizeof(Texture));
 	Texture* dev_normalTextures = nullptr;
 	cudaMalloc(&dev_normalTextures, sizeof(Texture));
+    Texture* dev_skyboxTextures = nullptr;
+    cudaMalloc(&dev_skyboxTextures, sizeof(Texture));
 	for (int i = 0; i < scene->materials.size(); i++)
 	{	
         Material material = scene->materials[i];
@@ -274,6 +276,12 @@ void pathtraceInit(Scene* scene)
 			cudaMemcpy(&(dev_materials[i].normalTexture), &dev_normalTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
             checkCUDAError("pathtraceInit: copy normal texture");
 		}
+        if (scene->materials[i].skyboxTexture != nullptr) {
+            Texture skyboxTexture = *material.skyboxTexture;
+            allocateMemForTexture(skyboxTexture, dev_skyboxTextures);
+            cudaMemcpy(&(dev_materials[i].skyboxTexture), &dev_skyboxTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
+            checkCUDAError("pathtraceInit: copy skybox texture");
+        }
 	}
     //cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
@@ -346,6 +354,15 @@ void pathtraceFree()
 				cudaFree(dev_data);
 				cudaFree(dev_normalTextures);
 			}
+            if (hst_scene->materials[i].skyboxTexture != nullptr)
+            {
+                Texture* dev_skyboxTexture = nullptr;
+                cudaMemcpy(&dev_skyboxTexture, &(dev_materials[i].skyboxTexture), sizeof(Texture*), cudaMemcpyDeviceToHost);
+                glm::vec3* dev_data = nullptr;
+                cudaMemcpy(&dev_data, &(dev_skyboxTexture->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+                cudaFree(dev_data);
+                cudaFree(dev_skyboxTexture);
+            }
 		}
 	}
 #endif

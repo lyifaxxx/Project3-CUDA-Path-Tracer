@@ -26,6 +26,7 @@
         {
             "TYPE":"Specular",
             "RGB":[0.98, 0.98, 0.98],
+            "SPECULAR_COLOR":[1.0,1.0,1.0],
             "ROUGHNESS":0.0
         }
     },

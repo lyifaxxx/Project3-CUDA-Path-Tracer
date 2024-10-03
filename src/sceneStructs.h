@@ -15,6 +15,14 @@ enum GeomType
     MESH
 };
 
+enum TextureType
+{
+    TEXTURE_2D,
+    CUBE_MAP,
+    PROCEDURAL,
+    SKYBOX
+};
+
 struct Ray
 {
     glm::vec3 origin;
@@ -94,13 +102,14 @@ struct Texture
     glm::vec3* data;
     int width;
     int height;
+    enum TextureType type;
 
     Texture(int w, int h) : width(w), height(h)
     {
         cudaMalloc(&data, width * height * sizeof(glm::vec3));
     }
 
-	Texture() : width(0), height(0), data(nullptr){}
+	Texture() : width(0), height(0), data(nullptr), type(TEXTURE_2D) {}
 
 };
 
@@ -123,6 +132,9 @@ struct Material
     Texture* diffuseTexture = nullptr;
     Texture* normalTexture = nullptr;
 
+    // skybox
+    int isSkybox = 0;
+    Texture* skyboxTexture = nullptr;
 };
 
 struct Camera

@@ -95,7 +95,6 @@ void Scene::writeMeshInfo(tinyobj::attrib_t* attrib,
 			mtl_material.diffuseTexture = new Texture();
 			std::string workingDir = getCurrentPath();
 			std::string texturePath = workingDir + "\\scenes\\objs\\" + mp.diffuse_texname;
-			std::cout << "Texture path: " << texturePath << std::endl;
             Scene::loadTexture(texturePath, mtl_material.diffuseTexture);
         }
         // normal map
@@ -267,13 +266,16 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newMaterial.hasReflective = 1;
 			newMaterial.specular.color = glm::vec3(col[0], col[1], col[2]);
 			float roughness = p["ROUGHNESS"];
-			newMaterial.specular.exponent = 1.0 / roughness * roughness;
+			newMaterial.specular.exponent = 16;
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
         }
 		else if (p["TYPE"] == "Reflective")
 		{
 			const auto& col = p["RGB"];
 			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            const auto& spec_col = p["SPECULAR_COLOR"];
+            newMaterial.specular.color = glm::vec3(col[0], col[1], col[2]);
+
 			newMaterial.hasReflective = 1;
 		}
 		else if (p["TYPE"] == "Refractive")
@@ -284,6 +286,14 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.indexOfRefraction = p["IOR"];
 			printf("IOR: %f\n", newMaterial.indexOfRefraction);
 		}
+        else if (p["TYPE"] == "Skybox") {
+            newMaterial.isSkybox = 1;
+            newMaterial.skyboxTexture = new Texture();
+            std::string workingDir = getCurrentPath();
+            std::string texturePath = workingDir + "\\scenes\\" + p["SKYBOX_TEXTURE"].get<std::string>();
+            Scene::loadTexture(texturePath, newMaterial.skyboxTexture);
+			std::cout << "Skybox texture loaded: " << p["SKYBOX_TEXTURE"] << std::endl;
+        }
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
     }

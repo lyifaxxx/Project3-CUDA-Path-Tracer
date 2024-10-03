@@ -48,7 +48,14 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
 __host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec2 uv) {
     int x = (int)(uv.x * texture->width);
     int y = (int)((1.0f - uv.y) * texture->height);
-    int index = y * texture->width + x;
+    int index = 0;
+    if (texture->type == TEXTURE_2D) {
+        index = y * texture->width + x;
+    }
+    else if (texture->type == SKYBOX) {
+
+    }
+
 
     glm::vec3 texColor = texture->data[index];
     return texColor;
@@ -91,7 +98,7 @@ __host__ __device__ void scatterRay(
     }
     else if (m.hasReflective) {
         // Reflective materials: Specular reflection
-        pathSegment.ray.direction = glm::reflect(pathSegment.ray.direction, normal);
+        newDirection = glm::reflect(pathSegment.ray.direction, normal);
 		// calculate specular reflection color
         
         // Adjust the color for reflective materials using the specular component
