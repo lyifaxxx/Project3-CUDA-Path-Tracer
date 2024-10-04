@@ -15,6 +15,7 @@
 #include "utilities.h"
 #include "intersections.h"
 #include "interactions.h"
+#include  "OpenImageDenoise/oidn.hpp"
 
 #define FIREST_BOUNCE 0
 #define ERRORCHECK 1
@@ -23,9 +24,15 @@
 #define SORT_BY_MATERIAL 1
 #define STREAM_COMPACTION_PATH 1
 // dof
-#define DOF 1
-// debug
+#define DOF 0
+// debug normal
 #define USE_NORMAL_TEXTURE 1
+// post-process toogle
+#define BLOOM 0
+// vignette toogle
+#define VIGNETTE 0
+// denoise toogle
+#define DENOISE 1
 
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -123,6 +130,7 @@ static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
 static Texture* dev_enviromentMap = NULL;
+static glm::vec3* dev_tmpImage_post = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -232,12 +240,14 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 
+    cudaMalloc(&dev_tmpImage_post, pixelcount * sizeof(glm::vec3));
+    cudaMemset(dev_tmpImage_post, 0, pixelcount * sizeof(glm::vec3));
+
     cudaMalloc(&dev_paths, pixelcount * sizeof(PathSegment));
 
     cudaMalloc(&dev_geoms, scene->geoms.size() * sizeof(Geom));
     cudaMemcpy(dev_geoms, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
-#if 1
     Mesh* dev_meshes = nullptr;
     cudaMalloc(&dev_meshes, sizeof(Mesh));
 	for (int i = 0; i < scene->geoms.size(); i++)
@@ -251,7 +261,6 @@ void pathtraceInit(Scene* scene)
 			checkCUDAError("pathtraceInit: copy mesh");		
 		}
 	}
-#endif
 
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
@@ -300,6 +309,7 @@ void pathtraceInit(Scene* scene)
 void pathtraceFree()
 {
     cudaFree(dev_image);  // no-op if dev_image is null
+	cudaFree(dev_tmpImage_post);
     cudaFree(dev_paths);
     //cudaFree(dev_geoms);
     
@@ -653,6 +663,118 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
     }
 }
 
+__global__ void applyGammaCorrection(glm::vec3* image, int numPixels, float gamma)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < numPixels) {
+        glm::vec3& px = image[index];
+        px = glm::pow(px, glm::vec3(1.0f / gamma));
+    }
+}
+
+__global__ void applyBloom(const glm::vec3* inputImage, glm::vec3* outputImage, int numPixels, glm::ivec2 camResolution, float threshold, float intensity)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < numPixels) {
+		glm::vec3& px = outputImage[index];
+        float lumi = glm::dot(px, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+
+		glm::vec3 bloomColor = glm::vec3(0.0f);
+
+		if (lumi <= threshold)
+		{
+			outputImage[index] = px;
+			return;
+		}
+
+        float gaussiankernel[121] = { 0.006849, 0.007239, 0.007559, 0.007795, 0.007941, 0.00799, 0.007941, 0.007795, 0.007559, 0.007239, 0.006849,
+    0.007239, 0.007653, 0.00799, 0.00824, 0.008394, 0.008446, 0.008394, 0.00824, 0.00799, 0.007653, 0.007239,
+    0.007559, 0.00799, 0.008342, 0.008604, 0.008764, 0.008819, 0.008764, 0.008604, 0.008342, 0.00799, 0.007559,
+    0.007795, 0.00824, 0.008604, 0.008873, 0.009039, 0.009095, 0.009039, 0.008873, 0.008604, 0.00824, 0.007795,
+    0.007941, 0.008394, 0.008764, 0.009039, 0.009208, 0.009265, 0.009208, 0.009039, 0.008764, 0.008394, 0.007941,
+    0.00799, 0.008446, 0.008819, 0.009095, 0.009265, 0.009322, 0.009265, 0.009095, 0.008819, 0.008446, 0.00799,
+    0.007941, 0.008394, 0.008764, 0.009039, 0.009208, 0.009265, 0.009208, 0.009039, 0.008764, 0.008394, 0.007941,
+    0.007795, 0.00824, 0.008604, 0.008873, 0.009039, 0.009095, 0.009039, 0.008873, 0.008604, 0.00824, 0.007795,
+    0.007559, 0.00799, 0.008342, 0.008604, 0.008764, 0.008819, 0.008764, 0.008604, 0.008342, 0.00799, 0.007559,
+    0.007239, 0.007653, 0.00799, 0.00824, 0.008394, 0.008446, 0.008394, 0.00824, 0.00799, 0.007653, 0.007239,
+    0.006849, 0.007239, 0.007559, 0.007795, 0.007941, 0.00799, 0.007941, 0.007795, 0.007559, 0.007239, 0.006849 };
+        int kernelSize = 11;
+        int halfKernelSize = kernelSize / 2;
+
+
+
+		for (int i = -halfKernelSize; i < halfKernelSize; i++)
+		{
+			for (int j = -halfKernelSize; j < halfKernelSize; j++)
+			{
+                int x = (index % camResolution.x) + j;
+                int y = (index / camResolution.x) + i;
+				if (x >= 0 && x < camResolution.x && y >= 0 && y < camResolution.y)
+				{
+					int neighborIndex = y * camResolution.x + x;
+					glm::vec3 neighborPx = inputImage[neighborIndex];
+					float lumi = glm::dot(neighborPx, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+                    bloomColor += gaussiankernel[(i + halfKernelSize) * kernelSize + (j + halfKernelSize)] * neighborPx;
+				}
+				
+			}
+		}
+        outputImage[index] = px + intensity * bloomColor;
+	}
+}
+
+__global__ void applyVignette(glm::vec3* outputImage, int numPixels, glm::ivec2 camResolution, float vignetteStrength)
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	if (index < numPixels) {
+		glm::vec3& px = outputImage[index];
+		glm::vec2 center = glm::vec2(camResolution.x / 2, camResolution.y / 2);
+		glm::vec2 pos = glm::vec2(index % camResolution.x, index / camResolution.x);
+		float dist = glm::distance(pos, center);
+		float vignette = 1.0f - vignetteStrength * dist / glm::length(center);
+		outputImage[index] = px * vignette;
+	}
+}
+
+void denoiseImage(const std::vector<glm::vec3>* inputImage, std::vector<glm::vec3>* outputImage, int numPixels, glm::ivec2 camResolution)
+{
+    const char* errorMessage;
+    oidn::DeviceRef device = oidn::newDevice();
+	device.commit();
+
+	oidn::BufferRef colorBuf = device.newBuffer(camResolution.x * camResolution.y * 3 * sizeof(float)); // beauty buffer
+
+
+	oidn::FilterRef filter = device.newFilter("RT");
+    filter.setImage("color", colorBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
+    filter.setImage("output", colorBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
+    filter.set("hdr", true);
+    filter.commit();
+
+    float* colorPtr = (float*)colorBuf.getData();
+	for (int i = 0; i < numPixels; ++i) {
+		colorPtr[i * 3] = (*inputImage)[i].x;
+		colorPtr[i * 3 + 1] = (*inputImage)[i].y;
+		colorPtr[i * 3 + 2] = (*inputImage)[i].z;
+	}
+
+	filter.execute();
+
+
+    if (device.getError(errorMessage) != oidn::Error::None)
+        std::cerr << "Error: " << errorMessage << std::endl;
+
+    // copy back to outputImage
+	colorPtr = (float*)colorBuf.getData();
+	for (int i = 0; i < numPixels; ++i) {
+		(*outputImage)[i] = glm::vec3(colorPtr[i * 3], colorPtr[i * 3 + 1], colorPtr[i * 3 + 2]);
+	}
+
+
+
+}
+
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -828,12 +950,57 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     ///////////////////////////////////////////////////////////////////////////
 
+	// post process
+    cudaMemcpy(dev_tmpImage_post, dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+    cudaDeviceSynchronize();
+    float gamma = 2.2f;
+	//applyGammaCorrection << <numBlocksPixels, blockSize1d >> > (dev_image, pixelcount, gamma);
+    // bloom
+#if BLOOM
+	float threshold = 0.8f;
+	float intensity = 0.9f;
+	
+	applyBloom << <numBlocksPixels, blockSize1d >> > (dev_image, dev_tmpImage_post, pixelcount, cam.resolution, threshold, intensity);
+    cudaDeviceSynchronize();
+#endif
+
+	// vignette
+#if VIGNETTE
+	float vignetteStrength = 0.9f;
+	applyVignette << <numBlocksPixels, blockSize1d >> > (dev_tmpImage_post, pixelcount, cam.resolution, vignetteStrength);
+	cudaDeviceSynchronize();
+#endif
+
+    // denoise
+#if DENOISE
+    // copy image data to host memory
+	std::vector<glm::vec3> hst_image = std::vector<glm::vec3>(pixelcount);
+	std::vector<glm::vec3> hst_image_post = std::vector<glm::vec3>(pixelcount);
+	cudaMemcpy(hst_image.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+	cudaMemcpy(hst_image_post.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+	denoiseImage(&hst_image, &hst_image_post, pixelcount, cam.resolution);
+	cudaMemcpy(dev_tmpImage_post, hst_image_post.data(), pixelcount * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+	cudaDeviceSynchronize();
+#endif
+
+
     // Send results to OpenGL buffer for rendering
-    sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
+    sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_tmpImage_post);
+
+    
 
     // Retrieve image from GPU
-    cudaMemcpy(hst_scene->state.image.data(), dev_image,
-        pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    if (iter != hst_scene->state.iterations) {
+        cudaMemcpy(hst_scene->state.image.data(), dev_image,
+            pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    }
+    else {
+		// copy post process image
+        cudaMemcpy(hst_scene->state.image.data(), dev_tmpImage_post,
+            pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+    }
+
 
     checkCUDAError("pathtrace");
 }
