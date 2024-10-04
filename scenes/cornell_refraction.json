@@ -33,6 +33,26 @@
             "TYPE":"Refractive",
             "RGB":[0.98, 0.98, 0.98],
             "IOR":1.5
+        },
+        "refractive2":
+        {
+            "TYPE":"Refractive",
+            "RGB":[0.98, 0.98, 0.98],
+            "IOR":2.0
+        }
+        ,
+        "refractive3":
+        {
+            "TYPE":"Refractive",
+            "RGB":[0.98, 0.98, 0.98],
+            "IOR":2.5
+        }
+        ,
+        "refractive4":
+        {
+            "TYPE":"Refractive",
+            "RGB":[0.98, 0.98, 0.98],
+            "IOR":3.0
         }
     },
     "Camera":
@@ -93,7 +113,31 @@
         {
             "TYPE":"sphere",
             "MATERIAL":"refractive",
-            "TRANS":[0.0,3.0,0.0],
+            "TRANS":[-2.0,6.0,0.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        }
+        ,
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"refractive2",
+            "TRANS":[2.0,6.0,0.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        }
+        ,
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"refractive3",
+            "TRANS":[-2.0,2.5,0.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        }
+        ,
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"refractive4",
+            "TRANS":[2.0,2.5,0.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         }

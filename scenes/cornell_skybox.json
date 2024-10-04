@@ -27,11 +27,17 @@
             "TYPE":"Specular",
             "RGB":[0.98, 0.98, 0.98],
             "ROUGHNESS":0.0
+        },
+        "refractive":
+        {
+            "TYPE":"Refractive",
+            "RGB":[0.98, 0.98, 0.98],
+            "IOR":2.5
         }
     },
     "Skybox":
     {
-        "SKYBOX_TEXTURE":"skyboxes/interior_atelier_soft_daylight.hdr"
+        "SKYBOX_TEXTURE":"skyboxes/fireplace_4k.hdr"
         
     },
     "Camera":
@@ -50,7 +56,7 @@
         {
             "TYPE":"sphere",
             "MATERIAL":"specular_white",
-            "TRANS":[-1.0,4.0,-1.0],
+            "TRANS":[-1.0,4.0,1.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         },
@@ -58,6 +64,13 @@
             "TYPE":"sphere",
             "MATERIAL":"diffuse_white",
             "TRANS":[3.0,4.0,1.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"refractive",
+            "TRANS":[7.0,4.0,1.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         }

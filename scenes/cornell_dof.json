@@ -27,6 +27,26 @@
             "TYPE":"Specular",
             "RGB":[0.98, 0.98, 0.98],
             "ROUGHNESS":0.0
+        },
+        "diffuse_pink":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.91, 0.361, 0.682]
+        },
+        "diffuse_blue":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.165, 0.482, 0.812]
+        },
+        "diffuse_purple":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.816, 0.247, 0.851]
+        },
+        "diffuse_yellow":
+        {
+            "TYPE":"Diffuse",
+            "RGB":[0.929, 0.455, 0.094]
         }
     },
     "Camera":
@@ -35,7 +55,7 @@
         "FOVY":45.0,
         "ITERATIONS":5000,
         "DEPTH":8,
-        "FILE":"cornell",
+        "FILE":"cornell_dof",
         "EYE":[0.0,5.0,10.5],
         "LOOKAT":[0.0,5.0,0.0],
         "UP":[0.0,1.0,0.0]
@@ -45,28 +65,7 @@
         {
             "TYPE":"cube",
             "MATERIAL":"light",
-            "TRANS":[-2.0,10.0,-0.5],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,0.3,3.0]
-        },
-        {
-            "TYPE":"cube",
-            "MATERIAL":"light",
-            "TRANS":[2.0,10.0,-0.5],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,0.3,3.0]
-        },
-        {
-            "TYPE":"cube",
-            "MATERIAL":"light",
-            "TRANS":[-2.0,10.0,3.0],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,0.3,3.0]
-        },
-        {
-            "TYPE":"cube",
-            "MATERIAL":"light",
-            "TRANS":[2.0,10.0,3.0],
+            "TRANS":[0.0,10.0,0.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,0.3,3.0]
         },
@@ -107,49 +106,28 @@
         },
         {
             "TYPE":"sphere",
-            "MATERIAL":"specular_white",
+            "MATERIAL":"diffuse_pink",
             "TRANS":[-2.0,4.0,-2.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         },
         {
             "TYPE":"sphere",
-            "MATERIAL":"specular_white",
-            "TRANS":[-1.0,4.0,-1.0],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,3.0,3.0]
-        },
-        {
-            "TYPE":"sphere",
-            "MATERIAL":"specular_white",
+            "MATERIAL":"diffuse_blue",
             "TRANS":[0.0,4.0,0.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         },
         {
             "TYPE":"sphere",
-            "MATERIAL":"specular_white",
-            "TRANS":[1.0,4.0,1.0],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,3.0,3.0]
-        },
-        {
-            "TYPE":"sphere",
-            "MATERIAL":"specular_white",
+            "MATERIAL":"diffuse_purple",
             "TRANS":[2.0,4.0,2.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         },
         {
             "TYPE":"sphere",
-            "MATERIAL":"specular_white",
-            "TRANS":[3.0,4.0,3.0],
-            "ROTAT":[0.0,0.0,0.0],
-            "SCALE":[3.0,3.0,3.0]
-        },
-        {
-            "TYPE":"sphere",
-            "MATERIAL":"specular_white",
+            "MATERIAL":"diffuse_yellow",
             "TRANS":[4.0,4.0,4.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]

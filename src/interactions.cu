@@ -102,14 +102,14 @@ __host__ __device__ void scatterRay(
         float rand = u01(rng);
         float cosTheta = glm::dot(normal, pathSegment.ray.direction);
         float eta = (cosTheta > 0) ? (m.indexOfRefraction / 1.0f) : (1.0f / m.indexOfRefraction);
-        glm::vec3 refractDirection = glm::refract(pathSegment.ray.direction, normal, eta);
+        glm::vec3 refractDirection = glm::normalize( glm::refract(pathSegment.ray.direction, normal, eta));
 
         // Adjust normal direction and cosTheta for refraction calculations
         if (cosTheta < 0) {
             cosTheta = -cosTheta; //entering the medium
         }
         else {
-            //normal = -normal; // Flip the normal
+            normal = -normal; // Flip the normal
         }
 
         // Calculate Fresnel reflectance using Schlick's approximation
@@ -117,9 +117,9 @@ __host__ __device__ void scatterRay(
         float reflectance = R0 + (1 - R0) * pow(1 - cosTheta, 5);
 
         // Check if the refraction results in total internal reflection
-        /*if (glm::length(refractDirection) == 0) {
+        if (glm::length(refractDirection) == 0) {
             reflectance = 1.0; 
-        }*/
+        }
 
         if (rand < reflectance) {
             // Reflect

@@ -23,7 +23,7 @@
 #define SORT_BY_MATERIAL 1
 #define STREAM_COMPACTION_PATH 1
 // dof
-#define DOF 0
+#define DOF 1
 // debug
 #define USE_NORMAL_TEXTURE 1
 
@@ -403,29 +403,27 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
         // TODO: implement antialiasing by jittering the ray
-		glm::vec3 jitter = glm::vec3(0.0f);
-		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
-		thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
-		jitter = glm::vec3(u01(rng), u01(rng), 0.0f);
-        float resolution_x = cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f);
-		float resolution_y = cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f);
-		jitter = glm::vec3(jitter.x * cam.pixelLength.x, jitter.y * cam.pixelLength.y, 0.0f);
-        segment.ray.direction = jitter + glm::normalize(cam.view
-            - cam.right * resolution_x
-            - cam.up * resolution_y
-        );
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+        thrust::uniform_real_distribution<float> u01(-0.5, 0.5);
+        glm::vec3 jitter = glm::vec3(u01(rng) * cam.pixelLength.x, u01(rng) * cam.pixelLength.y, 0.0f);
+        glm::vec3 resolutionVec = glm::vec3(cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f),
+            cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f),
+            0.0f);
+        glm::vec3 rayDirection = cam.view - cam.right * resolutionVec.x - cam.up * resolutionVec.y;
+        rayDirection = glm::normalize(rayDirection + jitter);
+        segment.ray.direction = rayDirection;
 
 #if DOF
         // DoF
-		thrust::uniform_int_distribution<int> u01dof(0, 1);
-		float randRadius = cam.lensRadius * u01dof(rng);
+        thrust::uniform_real_distribution<float> u01dof(0, 1);
+        float randRadius = cam.lensRadius * glm::sqrt(float(u01dof(rng)));
 		float randAngle = 2.0f * PI * u01dof(rng);
 		glm::vec3 lensPos = randRadius * glm::vec3(cos(randAngle), sin(randAngle), 0.0f);
 
 		glm::vec3 focal_point = segment.ray.origin + segment.ray.direction * cam.focalDistance;
 
 		segment.ray.origin += lensPos.x * cam.right + lensPos.y * cam.up;
-		segment.ray.direction = glm::normalize(focal_point - segment.ray.origin);
+		segment.ray.direction = jitter + glm::normalize(focal_point - segment.ray.origin);
 
 #endif
 
