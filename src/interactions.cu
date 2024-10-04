@@ -49,14 +49,7 @@ __host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec2 uv
     int x = (int)(uv.x * texture->width);
     int y = (int)((1.0f - uv.y) * texture->height);
     int index = 0;
-    if (texture->type == TEXTURE_2D) {
-        index = y * texture->width + x;
-    }
-    else if (texture->type == SKYBOX) {
-
-    }
-
-
+    index = y * texture->width + x;
     glm::vec3 texColor = texture->data[index];
     return texColor;
 }
@@ -140,9 +133,6 @@ __host__ __device__ void scatterRay(
         pathSegment.color *= m.color;      
     }
 
-
-
-
     // texture
 #if USE_DIFFUSE_TEXTURE
     if (m.hasDiffuseTexture) {
@@ -188,4 +178,21 @@ __host__ __device__ void scatterRay(
     pathSegment.ray.origin = newOrigin;
     pathSegment.ray.direction = newDirection;
     pathSegment.remainingBounces--;
+}
+
+__host__ __device__ void getEnvironmentMapColor(
+    PathSegment& pathSegment,
+    const Texture& enviromentMap,
+    thrust::default_random_engine& rng) {
+
+	glm::vec3 rayDir = -pathSegment.ray.direction;
+    rayDir = glm::normalize(rayDir);
+    float u = 0.5f + (atan2(rayDir.z, rayDir.x) / (2.0f * PI));
+    float v = 0.5f - (asin(rayDir.y) / PI);
+    glm::vec2 uv(u, v);
+
+	// sample the environment map
+	glm::vec3 color = textureSample(&enviromentMap, uv);
+	pathSegment.color *= color;
+
 }

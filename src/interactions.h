@@ -47,3 +47,8 @@ __host__ __device__ void scatterRay(
     //glm::mat3 TBN,
     const Material& m,
     thrust::default_random_engine& rng);
+
+__host__ __device__ void getEnvironmentMapColor(
+	PathSegment& pathSegment,
+	const Texture& t,
+	thrust::default_random_engine& rng);

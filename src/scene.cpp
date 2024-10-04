@@ -46,6 +46,8 @@ void Scene::loadTexture(const std::string& texturePath, Texture* texture) {
     else {
         std::cerr << "Failed to load texture: " << texturePath << std::endl;
     }
+
+   
 }
 
 std::string getCurrentPath() {
@@ -286,16 +288,18 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.indexOfRefraction = p["IOR"];
 			printf("IOR: %f\n", newMaterial.indexOfRefraction);
 		}
-        else if (p["TYPE"] == "Skybox") {
-            newMaterial.isSkybox = 1;
-            newMaterial.skyboxTexture = new Texture();
-            std::string workingDir = getCurrentPath();
-            std::string texturePath = workingDir + "\\scenes\\" + p["SKYBOX_TEXTURE"].get<std::string>();
-            Scene::loadTexture(texturePath, newMaterial.skyboxTexture);
-			std::cout << "Skybox texture loaded: " << p["SKYBOX_TEXTURE"] << std::endl;
-        }
+
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
+    }
+	const auto& hdrData = data["Skybox"];
+    if (!hdrData.is_null())
+    {
+		skyboxTexture = new Texture();
+		std::string workingDir = getCurrentPath();
+		std::string texturePath = workingDir + "\\scenes\\" + hdrData["SKYBOX_TEXTURE"].get<std::string>();
+		Scene::loadTexture(texturePath, skyboxTexture);
+        skyboxTexture->type = TEXTURE_2D;
     }
     const auto& objectsData = data["Objects"];
     for (const auto& p : objectsData)

@@ -132,9 +132,6 @@ struct Material
     Texture* diffuseTexture = nullptr;
     Texture* normalTexture = nullptr;
 
-    // skybox
-    int isSkybox = 0;
-    Texture* skyboxTexture = nullptr;
 };
 
 struct Camera

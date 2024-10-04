@@ -30,5 +30,6 @@ public:
     std::vector<Geom> geoms;
     std::vector<Material> materials;
     RenderState state;
+	Texture* skyboxTexture = nullptr;
 	int num_meshes = 0; // number of meshes in the scene
 };

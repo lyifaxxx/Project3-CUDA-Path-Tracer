@@ -19,7 +19,7 @@
 #define FIREST_BOUNCE 0
 #define ERRORCHECK 1
 // compaction control
-#define STREAM_COMPACTION_INTERSECTION 1
+#define STREAM_COMPACTION_INTERSECTION 0
 #define SORT_BY_MATERIAL 1
 #define STREAM_COMPACTION_PATH 1
 // dof
@@ -122,7 +122,7 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
-
+static Texture* dev_enviromentMap = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -276,12 +276,6 @@ void pathtraceInit(Scene* scene)
 			cudaMemcpy(&(dev_materials[i].normalTexture), &dev_normalTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
             checkCUDAError("pathtraceInit: copy normal texture");
 		}
-        if (scene->materials[i].skyboxTexture != nullptr) {
-            Texture skyboxTexture = *material.skyboxTexture;
-            allocateMemForTexture(skyboxTexture, dev_skyboxTextures);
-            cudaMemcpy(&(dev_materials[i].skyboxTexture), &dev_skyboxTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
-            checkCUDAError("pathtraceInit: copy skybox texture");
-        }
 	}
     //cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
 
@@ -289,6 +283,16 @@ void pathtraceInit(Scene* scene)
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
     // TODO: initialize any extra device memeory you need
+
+	// environment map
+    
+	if (scene->skyboxTexture != nullptr)
+	{
+        cudaMalloc(&dev_enviromentMap, sizeof(Texture));
+		Texture enviromentMap = *scene->skyboxTexture;
+		allocateMemForTexture(enviromentMap, dev_enviromentMap);
+		checkCUDAError("pathtraceInit: copy environment map");
+	}
 
     checkCUDAError("pathtraceInit");
 }
@@ -354,16 +358,16 @@ void pathtraceFree()
 				cudaFree(dev_data);
 				cudaFree(dev_normalTextures);
 			}
-            if (hst_scene->materials[i].skyboxTexture != nullptr)
-            {
-                Texture* dev_skyboxTexture = nullptr;
-                cudaMemcpy(&dev_skyboxTexture, &(dev_materials[i].skyboxTexture), sizeof(Texture*), cudaMemcpyDeviceToHost);
-                glm::vec3* dev_data = nullptr;
-                cudaMemcpy(&dev_data, &(dev_skyboxTexture->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
-                cudaFree(dev_data);
-                cudaFree(dev_skyboxTexture);
-            }
 		}
+
+        // free environment map
+        if (hst_scene->skyboxTexture != nullptr) {
+            glm::vec3* dev_data = nullptr;
+            cudaMemcpy(&dev_data, &(dev_enviromentMap->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+            cudaFree(dev_data);
+            cudaFree(dev_enviromentMap);
+            checkCUDAError("pathtraceFree: free environment map");
+        }
 	}
 #endif
     cudaDeviceSynchronize();
@@ -372,6 +376,8 @@ void pathtraceFree()
     cudaFree(dev_materials);
     checkCUDAError("pathtraceFree: free materials");
     cudaFree(dev_intersections);
+	checkCUDAError("pathtraceFree: free intersections");
+    
 
     checkCUDAError("pathtraceFree");
 }
@@ -438,6 +444,7 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geoms_size,
+	Texture* enviromentMap,
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -511,6 +518,8 @@ __global__ void computeIntersections(
         if (hit_geom_index == -1)
         {
             intersections[path_index].t = -1.0f;
+			// hit miss, return environment map color
+			//getEnvironmentMapColor(pathSegments[path_index], uv, *enviromentMap, makeSeededRandomEngine(0, path_index, pathSegments[path_index].remainingBounces));
         }
         else
         {
@@ -542,12 +551,19 @@ __global__ void shadeMaterial(
     int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
-    Material* materials)
+    Material* materials,
+    Texture* environmentMap)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
     {
         ShadeableIntersection intersection = shadeableIntersections[idx];
+		// no hit, return environment map color
+		if (intersection.t < 0.0f && environmentMap != nullptr) {
+			getEnvironmentMapColor(pathSegments[idx], *environmentMap, makeSeededRandomEngine(iter, idx, pathSegments[idx].remainingBounces));
+			pathSegments[idx].remainingBounces = 0;
+			return;
+		}
         if (intersection.t > 0.0f) // if the intersection exists...
         {
           // Set up the RNG
@@ -563,8 +579,7 @@ __global__ void shadeMaterial(
             if (material.emittance > 0.0f) {
                 pathSegments[idx].color *= (materialColor * material.emittance);
                 pathSegments[idx].remainingBounces = 0;
-                //return;
-                
+                //return;              
             }
             // Otherwise, do some pseudo-lighting computation. This is actually more
             // like what you would expect from shading in a rasterizer like OpenGL.
@@ -723,6 +738,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_geoms,
             hst_scene->geoms.size(),
+			dev_enviromentMap,
             dev_intersections
         );
         checkCUDAError("trace one bounce");
@@ -777,7 +793,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             num_paths,
             dev_intersections,
             dev_paths,
-            dev_materials
+            dev_materials,
+			dev_enviromentMap
         );
 
         cudaDeviceSynchronize();
