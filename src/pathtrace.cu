@@ -131,6 +131,9 @@ static ShadeableIntersection* dev_intersections = NULL;
 // ...
 static Texture* dev_enviromentMap = NULL;
 static glm::vec3* dev_tmpImage_post = NULL;
+static glm::vec3* dev_albedoImage = NULL;
+static glm::vec3* dev_normalImage = NULL;
+
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -243,6 +246,12 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_tmpImage_post, pixelcount * sizeof(glm::vec3));
     cudaMemset(dev_tmpImage_post, 0, pixelcount * sizeof(glm::vec3));
 
+	cudaMalloc(&dev_albedoImage, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_albedoImage, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_normalImage, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_normalImage, 0, pixelcount * sizeof(glm::vec3));
+
     cudaMalloc(&dev_paths, pixelcount * sizeof(PathSegment));
 
     cudaMalloc(&dev_geoms, scene->geoms.size() * sizeof(Geom));
@@ -310,6 +319,8 @@ void pathtraceFree()
 {
     cudaFree(dev_image);  // no-op if dev_image is null
 	cudaFree(dev_tmpImage_post);
+	cudaFree(dev_albedoImage);
+	cudaFree(dev_normalImage);
     cudaFree(dev_paths);
     //cudaFree(dev_geoms);
     
@@ -453,7 +464,8 @@ __global__ void computeIntersections(
     Geom* geoms,
     int geoms_size,
 	Texture* enviromentMap,
-    ShadeableIntersection* intersections)
+    ShadeableIntersection* intersections,
+    glm::vec3* dev_normalImage)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -527,7 +539,6 @@ __global__ void computeIntersections(
         {
             intersections[path_index].t = -1.0f;
 			// hit miss, return environment map color
-			//getEnvironmentMapColor(pathSegments[path_index], uv, *enviromentMap, makeSeededRandomEngine(0, path_index, pathSegments[path_index].remainingBounces));
         }
         else
         {
@@ -541,6 +552,10 @@ __global__ void computeIntersections(
 			intersections[path_index].bitangent = bitangent;
             //intersections[path_index].TBN = &TBN;
 #endif
+			// normal image
+            if (depth == 0) {
+				dev_normalImage[pathSegment.pixelIndex] = normal;
+            }
         }
     }
 }
@@ -736,26 +751,58 @@ __global__ void applyVignette(glm::vec3* outputImage, int numPixels, glm::ivec2 
 	}
 }
 
-void denoiseImage(const std::vector<glm::vec3>* inputImage, std::vector<glm::vec3>* outputImage, int numPixels, glm::ivec2 camResolution)
+__global__ void normalizeNormals(glm::vec3* normals, int numNormals) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < numNormals) {
+        normals[idx] = normalize(normals[idx]);
+    }
+}
+
+void denoiseImage(const std::vector<glm::vec3>* inputImage, 
+    const std::vector<glm::vec3>* albedoImage,
+	const std::vector<glm::vec3>* normalImage,
+    std::vector<glm::vec3>* outputImage, 
+    int numPixels, glm::ivec2 camResolution)
 {
     const char* errorMessage;
     oidn::DeviceRef device = oidn::newDevice();
 	device.commit();
 
 	oidn::BufferRef colorBuf = device.newBuffer(camResolution.x * camResolution.y * 3 * sizeof(float)); // beauty buffer
+	oidn::BufferRef albedoBuf = device.newBuffer(camResolution.x * camResolution.y * 3 * sizeof(float)); // albedo buffer
+	oidn::BufferRef normalBuf = device.newBuffer(camResolution.x * camResolution.y * 3 * sizeof(float)); // normal buffer
 
 
 	oidn::FilterRef filter = device.newFilter("RT");
     filter.setImage("color", colorBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
+	filter.setImage("albedo", albedoBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
+	filter.setImage("normal", normalBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
     filter.setImage("output", colorBuf, oidn::Format::Float3, camResolution.x, camResolution.y);
     filter.set("hdr", true);
     filter.commit();
+    if (device.getError(errorMessage) != oidn::Error::None)
+        std::cerr << "Error: " << errorMessage << std::endl;
 
     float* colorPtr = (float*)colorBuf.getData();
 	for (int i = 0; i < numPixels; ++i) {
 		colorPtr[i * 3] = (*inputImage)[i].x;
 		colorPtr[i * 3 + 1] = (*inputImage)[i].y;
 		colorPtr[i * 3 + 2] = (*inputImage)[i].z;
+	}
+
+	float* albedoPtr = (float*)albedoBuf.getData();
+	for (int i = 0; i < numPixels; ++i) {
+		albedoPtr[i * 3] = (*albedoImage)[i].x;
+		albedoPtr[i * 3 + 1] = (*albedoImage)[i].y;
+		albedoPtr[i * 3 + 2] = (*albedoImage)[i].z;
+	}
+
+	float* normalPtr = (float*)normalBuf.getData();
+	for (int i = 0; i < numPixels; ++i) {
+		glm::vec3 normal = glm::normalize((*normalImage)[i]);
+		normalPtr[i * 3] = normal.x;
+		normalPtr[i * 3 + 1] = normal.y;
+		normalPtr[i * 3 + 2] = normal.z;
 	}
 
 	filter.execute();
@@ -769,8 +816,6 @@ void denoiseImage(const std::vector<glm::vec3>* inputImage, std::vector<glm::vec
 	for (int i = 0; i < numPixels; ++i) {
 		(*outputImage)[i] = glm::vec3(colorPtr[i * 3], colorPtr[i * 3 + 1], colorPtr[i * 3 + 2]);
 	}
-
-
 
 }
 
@@ -859,11 +904,17 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_geoms,
             hst_scene->geoms.size(),
 			dev_enviromentMap,
-            dev_intersections
+            dev_intersections,
+            dev_normalImage
         );
         checkCUDAError("trace one bounce");
         cudaDeviceSynchronize();
         depth++;
+
+		// normalizing normals
+		//normalizeNormals << <numblocksPathSegmentTracing, blockSize1d >> > (dev_normalImage, pixelcount);
+		//cudaDeviceSynchronize();
+
 
 #if STREAM_COMPACTION_INTERSECTION
 		// Stream compaction
@@ -941,7 +992,16 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         {
             guiData->TracedDepth = depth;
         }
-    }
+
+        // pass albedo
+        if (depth == 0) {
+			cudaMemcpy(dev_albedoImage, dev_image, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
+			cudaDeviceSynchronize();
+
+        }
+
+
+	} // end of while loop for depths
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
@@ -973,15 +1033,30 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // denoise
 #if DENOISE
-    // copy image data to host memory
-	std::vector<glm::vec3> hst_image = std::vector<glm::vec3>(pixelcount);
-	std::vector<glm::vec3> hst_image_post = std::vector<glm::vec3>(pixelcount);
-	cudaMemcpy(hst_image.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-	cudaMemcpy(hst_image_post.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
-	denoiseImage(&hst_image, &hst_image_post, pixelcount, cam.resolution);
-	cudaMemcpy(dev_tmpImage_post, hst_image_post.data(), pixelcount * sizeof(glm::vec3), cudaMemcpyHostToDevice);
-	cudaDeviceSynchronize();
+    int interval = 10;
+    if (iter % interval == 0 || iter == hst_scene->state.iterations) {
+        // copy image data to host memory
+        // beauty buffer
+        std::vector<glm::vec3> hst_image = std::vector<glm::vec3>(pixelcount);
+        std::vector<glm::vec3> hst_image_post = std::vector<glm::vec3>(pixelcount);
+        cudaMemcpy(hst_image.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+        cudaMemcpy(hst_image_post.data(), dev_tmpImage_post, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+		// albedo buffer
+		std::vector<glm::vec3> hst_albedoImage = std::vector<glm::vec3>(pixelcount);
+		cudaMemcpy(hst_albedoImage.data(), dev_albedoImage, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
+        // normal buffer
+		std::vector<glm::vec3> hst_normalImage = std::vector<glm::vec3>(pixelcount);
+		cudaMemcpy(hst_normalImage.data(), dev_normalImage, pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
+		cudaDeviceSynchronize();
+		// denoise
+        denoiseImage(&hst_image, &hst_albedoImage, &hst_normalImage, &hst_image_post, pixelcount, cam.resolution);
+		// copy back to device memory
+        cudaMemcpy(dev_tmpImage_post, hst_image_post.data(), pixelcount * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+        cudaDeviceSynchronize();
+    }
+    
 #endif
 
 
