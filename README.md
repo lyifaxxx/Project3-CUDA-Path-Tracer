@@ -8,60 +8,71 @@ CUDA Path Tracer
 * Tested on: Windows 11, AMD Ryzen 7 5800H 3.20 GHz, Nvidia GeForce RTX 3060 Laptop GPU (Personal Laptop)
 
 ## Feature
-- Arbitrary Mesh Loading
-- Texture Mapping
-- Depth of Field
-- Environment Mapping
-- Post-Process Effect
-- Russian Roulette Path Termination
-- Refraction
-- OIDN Denoise
+- Visual Effects
+  - Materials
+    - Diffuse
+    - Specular
+    - Refract 
+  - Arbitrary Mesh Loading
+  - Texture Mapping
+  - Depth of Field
+  - Environment Mapping
+  - Post-Process Effect
+    - Bloom
+    - Vignette
+  - OIDN Denoise
+- Optimization
+  - Stream Compaction
+    - Path Termination
+    - Sort By Material
+  - Russian Roulette Path Termination
+
 
 
 ## Introduction
 
-## Materials
-### Reflection
+## Visual Effects
+### Materials
+#### Reflection
 ![](img/reflect.png)
 
-### Refraction
+#### Refraction
 ![](img/refract.png)
 
 The above image shows the glass ball with IOR 1.5, 2.0, 2.5, 3.0 from left to right, up to down respectively.
 
 This refraction material utilizes both refraction and reflection under Schlick's approximation.
 
-## Environment Map
+### Environment Map
 ![](img/env.png)
 
 From left to right, the materials are total reflect, diffuse and refract respectively.
 
-## Arbitrary Mesh Loading and Texture Mapping
+### Arbitrary Mesh Loading and Texture Mapping
 ![](img/diff_nor_tex_ninja.png)
 ![](img/normal.png)
 
 
-## Depth of Field
+### Depth of Field
 
 ![](img/dof.png)
 
 Depth of field effect shows the physical structure of a camera lens. By toogling lens radius and focal distance, we can get a sharp edge around focal point and adjust the intensity of blur effect.
 
-## Russian Roulette Path Termination
-The idea is to terminate ray bouncing early if the ray meets certain standards.
 
 
 
-## Post-Process Effect
-### Bloom Effect
+
+### Post-Process Effect
+#### Bloom Effect
 ![](img/bloom0.png)
 ![](img/bloom1.png)
 
-### Vignette
+#### Vignette
 ![](img/reflect.png)
 ![](img/vignette.png)
 
-## OIDN Denoise
+### OIDN Denoise
 The following images shows:
 - without denoiser
 - with only beauty denoiser
@@ -72,6 +83,20 @@ The following images shows:
 ![](img/denoise2.png)
 tested under 1000 samples with denoise interval 10
 
+Our Ninja scene from previous sections. With only 100 samples with denoise interval 10, you can see a clear difference:
 
+![](img/ninja_noise0.png)
+![](img/ninja_noise1.png)
+![](img/ninja_noise2.png)
 
+## Optimization
+### Stream Compaction
+#### Path Termination
+check ray's remaining bounce after each depth iteration. To achieve better continuity I also terminate ray after intersection test.
 
+However, if the scene contains an environment map, you can not compact after intersection test since we need the missed-hit ray to sample environment map.
+
+#### Sort By Material
+
+### Russian Roulette Path Termination
+The idea is to terminate ray bouncing early if the ray meets certain standards.
