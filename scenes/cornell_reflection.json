@@ -28,6 +28,13 @@
             "RGB":[0.98, 0.98, 0.98],
             "SPECULAR_COLOR":[1.0,1.0,1.0],
             "ROUGHNESS":0.0
+        },
+        "specular_2":
+        {
+            "TYPE":"Specular",
+            "RGB":[0.98, 0.98, 0.98],
+            "SPECULAR_COLOR":[1.0,1.0,1.0],
+            "ROUGHNESS":0.1
         }
     },
     "Camera":
@@ -89,6 +96,13 @@
             "TYPE":"sphere",
             "MATERIAL":"specular_white",
             "TRANS":[-1.0,4.0,-1.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"specular_2",
+            "TRANS":[1.0,4.0,-1.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         }
