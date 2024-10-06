@@ -37,7 +37,7 @@
     },
     "Skybox":
     {
-        "SKYBOX_TEXTURE":"skyboxes/fireplace_4k.hdr"
+        "SKYBOX_TEXTURE":"skyboxes/small_apartment_1.hdr"
         
     },
     "Camera":
