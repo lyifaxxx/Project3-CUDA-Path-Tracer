@@ -53,8 +53,8 @@
     {
         "RES":[1000,1000],
         "FOVY":45.0,
-        "ITERATIONS":5000,
-        "DEPTH":8,
+        "ITERATIONS":1,
+        "DEPTH":15,
         "FILE":"cornell_dof",
         "EYE":[0.0,5.0,10.5],
         "LOOKAT":[0.0,5.0,0.0],
@@ -129,6 +129,34 @@
             "TYPE":"sphere",
             "MATERIAL":"diffuse_yellow",
             "TRANS":[4.0,4.0,4.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"diffuse_pink",
+            "TRANS":[-2.0,4.0,-2.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"diffuse_blue",
+            "TRANS":[0.0,3.0,0.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"diffuse_purple",
+            "TRANS":[-2.0,4.0,2.0],
+            "ROTAT":[0.0,0.0,0.0],
+            "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"sphere",
+            "MATERIAL":"diffuse_yellow",
+            "TRANS":[-4.0,4.0,4.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         }
