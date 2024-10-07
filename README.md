@@ -8,7 +8,7 @@ CUDA Path Tracer
 * Tested on: Windows 11, AMD Ryzen 7 5800H 3.20 GHz, Nvidia GeForce RTX 3060 Laptop GPU (Personal Laptop)
 
 ## Feature
-- [Visual Effects](https://github.com/lyifaxxx/Project3-CUDA-Path-Tracer/main/README.md#visual-effects)
+- [Visual Effects](https://github.com/lyifaxxx/Project3-CUDA-Path-Tracer/blob/main/README.md#visual-effects)
   - [Materials](https://github.com/lyifaxxx/Project3-CUDA-Path-Tracer/main/README.md#materials)
     - Diffuse
     - [Specular](https://github.com/lyifaxxx/Project3-CUDA-Path-Tracer/main/README.md#reflection)
