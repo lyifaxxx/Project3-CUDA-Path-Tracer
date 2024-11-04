@@ -120,6 +120,7 @@ struct Material
     {
         float exponent;
         glm::vec3 color;
+        float roughness;
     } specular;
     float hasReflective;
     float hasRefractive;
@@ -175,7 +176,6 @@ struct ShadeableIntersection
   glm::vec3 surfaceNormal;
   int materialId;
   glm::vec2 uv;
-  //glm::mat3* TBN;
   glm::vec3 bitangent;
   glm::vec3 tangent;
 };

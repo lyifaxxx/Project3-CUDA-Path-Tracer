@@ -21,8 +21,10 @@
 #define ERRORCHECK 1
 // compaction control
 #define STREAM_COMPACTION_INTERSECTION 0
-#define SORT_BY_MATERIAL 1
+#define SORT_BY_MATERIAL 0
 #define STREAM_COMPACTION_PATH 1
+// russian roulette
+#define RUSSIAN_ROULETTE 0
 // dof
 #define DOF 0
 // debug normal
@@ -32,7 +34,7 @@
 // vignette toogle
 #define VIGNETTE 0
 // denoise toogle
-#define DENOISE 1
+#define DENOISE 0
 
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -257,14 +259,14 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_geoms, scene->geoms.size() * sizeof(Geom));
     cudaMemcpy(dev_geoms, scene->geoms.data(), scene->geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
-    Mesh* dev_meshes = nullptr;
-    cudaMalloc(&dev_meshes, sizeof(Mesh));
+    
 	for (int i = 0; i < scene->geoms.size(); i++)
 	{
 		if (scene->geoms[i].type == MESH)
 		{
 			Mesh mesh = *scene->geoms[i].mesh;
-           
+            Mesh* dev_meshes = nullptr;
+            cudaMalloc(&dev_meshes, sizeof(Mesh));
 			allocateMemForMesh(mesh, dev_meshes);
 			cudaMemcpy(&(dev_geoms[i].mesh), &dev_meshes, sizeof(Mesh*), cudaMemcpyHostToDevice);
 			checkCUDAError("pathtraceInit: copy mesh");		
@@ -273,10 +275,6 @@ void pathtraceInit(Scene* scene)
 
     cudaMalloc(&dev_materials, scene->materials.size() * sizeof(Material));
     cudaMemcpy(dev_materials, scene->materials.data(), scene->materials.size() * sizeof(Material), cudaMemcpyHostToDevice);
-	Texture* dev_diffuseTextures = nullptr;
-	cudaMalloc(&dev_diffuseTextures, sizeof(Texture));
-	Texture* dev_normalTextures = nullptr;
-	cudaMalloc(&dev_normalTextures, sizeof(Texture));
     Texture* dev_skyboxTextures = nullptr;
     cudaMalloc(&dev_skyboxTextures, sizeof(Texture));
 	for (int i = 0; i < scene->materials.size(); i++)
@@ -284,12 +282,16 @@ void pathtraceInit(Scene* scene)
         Material material = scene->materials[i];
         if (scene->materials[i].diffuseTexture != nullptr) {
             Texture diffuseTexture = *material.diffuseTexture;
+            Texture* dev_diffuseTextures = nullptr;
+            cudaMalloc(&dev_diffuseTextures, sizeof(Texture));
             allocateMemForTexture(diffuseTexture, dev_diffuseTextures);
             cudaMemcpy(&(dev_materials[i].diffuseTexture), &dev_diffuseTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
             checkCUDAError("pathtraceInit: copy diffuse texture");
         }
 		if (scene->materials[i].normalTexture != nullptr) {
 			Texture normalTexture = *material.normalTexture;
+            Texture* dev_normalTextures = nullptr;
+            cudaMalloc(&dev_normalTextures, sizeof(Texture));
 			allocateMemForTexture(normalTexture, dev_normalTextures);
 			cudaMemcpy(&(dev_materials[i].normalTexture), &dev_normalTextures, sizeof(Texture*), cudaMemcpyHostToDevice);
             checkCUDAError("pathtraceInit: copy normal texture");
@@ -305,9 +307,9 @@ void pathtraceInit(Scene* scene)
 	// environment map
     
 	if (scene->skyboxTexture != nullptr)
-	{
+	{       
         cudaMalloc(&dev_enviromentMap, sizeof(Texture));
-		Texture enviromentMap = *scene->skyboxTexture;
+        Texture enviromentMap = *scene->skyboxTexture;
 		allocateMemForTexture(enviromentMap, dev_enviromentMap);
 		checkCUDAError("pathtraceInit: copy environment map");
 	}
@@ -383,10 +385,12 @@ void pathtraceFree()
 
         // free environment map
         if (hst_scene->skyboxTexture != nullptr) {
+			Texture* dev_enviromentMap_tmp = nullptr;
+			cudaMemcpy(&dev_enviromentMap_tmp, &dev_enviromentMap, sizeof(Texture*), cudaMemcpyDeviceToHost);
             glm::vec3* dev_data = nullptr;
-            cudaMemcpy(&dev_data, &(dev_enviromentMap->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
+            cudaMemcpy(&dev_data, &(dev_enviromentMap_tmp->data), sizeof(glm::vec3*), cudaMemcpyDeviceToHost);
             cudaFree(dev_data);
-            cudaFree(dev_enviromentMap);
+            cudaFree(dev_enviromentMap_tmp);
             checkCUDAError("pathtraceFree: free environment map");
         }
 	}
@@ -398,7 +402,6 @@ void pathtraceFree()
     checkCUDAError("pathtraceFree: free materials");
     cudaFree(dev_intersections);
 	checkCUDAError("pathtraceFree: free intersections");
-    
 
     checkCUDAError("pathtraceFree");
 }
@@ -623,6 +626,7 @@ __global__ void shadeMaterial(
                     material, 
                     rng);
                 glm::vec3 color = pathSegments[idx].color;
+#if RUSSIAN_ROULETTE
 				// russian roulette
 				float p = glm::min(glm::max(color.x, glm::max(color.y, color.z)), 1.0f);
                 if (u01(rng) > p) {
@@ -631,6 +635,7 @@ __global__ void shadeMaterial(
                 else {
                     pathSegments[idx].color /= p;
                 }
+#endif
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
@@ -734,7 +739,11 @@ __global__ void applyBloom(const glm::vec3* inputImage, glm::vec3* outputImage, 
 				
 			}
 		}
-        outputImage[index] = px + intensity * bloomColor;
+		glm::vec3 finalColor = px + intensity * bloomColor;
+
+		// hdr to ldr
+		// tone mapping
+        outputImage[index] = finalColor;// / (finalColor + glm::vec3(1.0f));
 	}
 }
 
@@ -831,8 +840,21 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
 	// set camera parameters with gui data
+#if 0
 	cam.focalDistance = guiData->focalDistance;
 	cam.lensRadius = guiData->lensRadius;
+#endif
+    cam.focalDistance = 0.3;
+    cam.lensRadius = 0.03;
+
+	//print out camera info
+	//std::cout << "Camera Info: " << std::endl;
+	//std::cout << "Focal Distance: " << cam.focalDistance << std::endl;
+	//std::cout << "Lens Radius: " << cam.lensRadius << std::endl;
+	/*std::cout << "camera position: " << cam.position.x << " " << cam.position.y << " " << cam.position.z << std::endl;
+	std::cout << "camer look at: " << cam.lookAt.x << " " << cam.lookAt.y << " " << cam.lookAt.z << std::endl;
+	std::cout << "camer up: " << cam.up.x << " " << cam.up.y << " " << cam.up.z << std::endl;
+	std::cout << "camera fov: " << cam.fov.x << " " << cam.fov.y << std::endl;*/
 
     // 2D block for generating ray from camera
     const dim3 blockSize2d(8, 8);
@@ -915,7 +937,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 		//normalizeNormals << <numblocksPathSegmentTracing, blockSize1d >> > (dev_normalImage, pixelcount);
 		//cudaDeviceSynchronize();
 
-
+        int prev_num_paths = num_paths;
 #if STREAM_COMPACTION_INTERSECTION
 		// Stream compaction
 		// compact after intersection
@@ -936,10 +958,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         cudaDeviceSynchronize();
 		num_paths = thrust::get<0>(new_end_iter.get_iterator_tuple()) - dev_paths;
 		dev_path_end = dev_paths + num_paths;
+		//std::cout << "terminated paths after compact intersection:" << prev_num_paths - num_paths << std::endl;
 #endif
 
 #if SORT_BY_MATERIAL
         // sort pathSeg by material types
+        prev_num_paths = num_paths;
 		thrust::sort_by_key(
             thrust::device, 
             dev_intersections, 
@@ -947,6 +971,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             sortByMaterial());
 		cudaDeviceSynchronize();
+
 
 #endif
 
@@ -971,13 +996,15 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         cudaDeviceSynchronize();
 #if FIREST_BOUNCE
         iterationComplete = true; // TODO: should be based off stream compaction results.
-#else
+#endif
+
 
         accumulateColor << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_image, dev_paths);
         cudaDeviceSynchronize();
 
     #if STREAM_COMPACTION_PATH
         // Stream compaction
+		//prev_num_paths = num_paths;
 		PathSegment* new_end = thrust::remove_if(thrust::device, dev_paths, dev_path_end, hasNoMoreBounces());
         cudaDeviceSynchronize();
 		num_paths = new_end - dev_paths;
@@ -985,9 +1012,9 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         if (num_paths <= 0 || depth > traceDepth) {
             iterationComplete = true;
         }
+		std::cout << "terminated paths after stream compaction path:" << prev_num_paths - num_paths << std::endl;
     #endif
         
-#endif
         if (guiData != NULL)
         {
             guiData->TracedDepth = depth;
@@ -1017,8 +1044,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 	//applyGammaCorrection << <numBlocksPixels, blockSize1d >> > (dev_image, pixelcount, gamma);
     // bloom
 #if BLOOM
-	float threshold = 0.8f;
-	float intensity = 0.9f;
+	float threshold = 1.0f;
+	float intensity = 0.5f;
 	
 	applyBloom << <numBlocksPixels, blockSize1d >> > (dev_image, dev_tmpImage_post, pixelcount, cam.resolution, threshold, intensity);
     cudaDeviceSynchronize();
@@ -1026,7 +1053,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
 	// vignette
 #if VIGNETTE
-	float vignetteStrength = 0.9f;
+	float vignetteStrength = 0.7f;
 	applyVignette << <numBlocksPixels, blockSize1d >> > (dev_tmpImage_post, pixelcount, cam.resolution, vignetteStrength);
 	cudaDeviceSynchronize();
 #endif

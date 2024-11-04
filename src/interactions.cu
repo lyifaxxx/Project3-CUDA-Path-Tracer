@@ -45,6 +45,30 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
         + sin(around) * over * perpendicularDirection2;
 }
 
+__host__ __device__ glm::vec3 sampleGGX(const glm::vec3& n, float roughness, thrust::default_random_engine& rng) {
+    float alpha = roughness * roughness;  // Square of roughness to use in the distribution
+
+    // Sample random angles
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    float phi = 2.0 * PI * u01(rng);
+    float cosTheta = sqrt((1.0 - u01(rng)) / (1.0 + (alpha * alpha - 1.0) * u01(rng)));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+    // Spherical to Cartesian coordinates
+    glm::vec3 h;
+    h.x = cos(phi) * sinTheta;
+    h.y = sin(phi) * sinTheta;
+    h.z = cosTheta;
+
+    // Transform h to align with the surface normal
+    glm::vec3 upVector = abs(n.z) < 0.999 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
+    glm::vec3 tangentX = glm::normalize(glm::cross(upVector, n));
+    glm::vec3 tangentY = glm::cross(n, tangentX);
+
+    // Transform h into the tangent space of the normal n
+    return tangentX * h.x + tangentY * h.y + n * h.z;
+}
+
 __host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec2 uv) {
     int x = (int)(uv.x * texture->width);
     int y = (int)((1.0f - uv.y) * texture->height);
@@ -52,6 +76,34 @@ __host__ __device__ glm::vec3 textureSample(const Texture* texture, glm::vec2 uv
     index = y * texture->width + x;
     glm::vec3 texColor = texture->data[index];
     return texColor;
+}
+
+__host__ __device__ float GGXDistribution(const glm::vec3& n, const glm::vec3& h, float roughness) {
+    float alpha = roughness * roughness;  // Roughness squared
+    float alpha2 = alpha * alpha;
+    float cosThetaH = glm::dot(n, h);
+    float cosThetaH2 = cosThetaH * cosThetaH;
+
+    float denom = cosThetaH2 * (alpha2 - 1.0) + 1.0;
+    denom = PI * denom * denom;
+
+    return alpha2 / denom;
+}
+
+__host__ __device__ float GeometrySmith(const glm::vec3& n, const glm::vec3& v, const glm::vec3& l, float roughness) {
+    float alpha = roughness * roughness;
+    float alpha2 = alpha * alpha;
+
+    float cosThetaV = glm::dot(n, v);
+    float cosThetaL = glm::dot(n, l);
+
+    float twoTanThetaV = abs(2.0 * cosThetaV / sqrt(1.0 - cosThetaV * cosThetaV));
+    float lambdaV = (-1.0 + sqrt(1.0 + alpha2 * twoTanThetaV * twoTanThetaV)) / 2.0;
+
+    float twoTanThetaL = abs(2.0 * cosThetaL / sqrt(1.0 - cosThetaL * cosThetaL));
+    float lambdaL = (-1.0 + sqrt(1.0 + alpha2 * twoTanThetaL * twoTanThetaL)) / 2.0;
+
+    return 1.0 / ((1.0 + lambdaV) * (1.0 + lambdaL));
 }
 
 __host__ __device__ void scatterRay(
@@ -90,10 +142,30 @@ __host__ __device__ void scatterRay(
         }
     }
     else if (m.hasReflective) {
+#if 0
+        // Reflective materials: Specular reflection
+        glm::vec3 incoming = pathSegment.ray.direction;
+        glm::vec3 reflected;
+
+        glm::vec3 h = sampleGGX(normal, m.specular.roughness, rng);
+        reflected = glm::reflect(-incoming, h);
+
+        float cosTheta = glm::dot(incoming, h);
+        glm::vec3 F0 = glm::vec3(0.04);  // Assuming non-metallic; adjust if metallic
+        glm::vec3 fresnel = F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
+
+        float D = GGXDistribution(normal, h, m.specular.roughness);
+        float G = GeometrySmith(normal, incoming, reflected, m.specular.roughness);
+        glm::vec3 specColor = (D * fresnel * G) / (4.0f * glm::dot(normal, incoming) * glm::dot(normal, reflected));
+
+        // Adjust the color for reflective materials using the specular component
+        pathSegment.color *= m.specular.color * specColor;
+        newDirection = reflected;
+#endif
         // Reflective materials: Specular reflection
         newDirection = glm::reflect(pathSegment.ray.direction, normal);
-		// calculate specular reflection color
-        
+        // calculate specular reflection color
+
         // Adjust the color for reflective materials using the specular component
         pathSegment.color *= m.color;
     }
@@ -138,7 +210,7 @@ __host__ __device__ void scatterRay(
     if (m.hasDiffuseTexture) {
         glm::vec3 textureColor = textureSample(m.diffuseTexture, uv);
         // gamma correction to texture color
-        textureColor = glm::pow(textureColor, glm::vec3(1.0f / 2.2f));
+        //textureColor = glm::pow(textureColor, glm::vec3(1.0f / 2.2f));
         pathSegment.color *= textureColor;
     }
 #endif
@@ -151,7 +223,7 @@ __host__ __device__ void scatterRay(
         newOrigin = intersect;
         newDirection = normalize(calculateRandomDirectionInHemisphere(normal, rng));
 #if TEST_NORMAL_MAP
-        pathSegment.color = normal;
+        pathSegment.color = sampledNormal;
 #endif
     }
 #endif
